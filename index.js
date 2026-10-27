@@ -1,3 +1,8 @@
+const http = require('http');
+const port = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('Bot is running!')).listen(port);
+
+// ... your existing bot code starts right below this ...
 const bot = require('./bot');
 
 if (!process.env.BOT_TOKEN) {
