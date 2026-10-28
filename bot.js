@@ -127,7 +127,7 @@ bot.on('text', async (ctx) => {
       return;
     }
     const movie = await getMovieDetails(results[0].id, results[0].media_type);
-    const options = movieButtons(movie.id);
+   const options = movieButtons(movie.id, movie.title || movie.name);
     if (movie.poster_path) {
       await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
         caption: movieCaption(movie),
