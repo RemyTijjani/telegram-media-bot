@@ -125,7 +125,7 @@ bot.on('photo', async (ctx) => {
 });
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES (MOVIES & SERIES)
+// 🔍 HANDLE USER TEXT SEARCHES (MOVIES & SERIES via MULTI-SEARCH)
 // ==========================================
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
@@ -135,28 +135,24 @@ bot.on('text', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    // 1. Search both Movies and TV Series simultaneously on TMDB
-    const [movieResults, tvResults] = await Promise.all([
-      searchMovies(searchQuery, 'movie').catch(() => []),
-      searchMovies(searchQuery, 'tv').catch(() => [])
-    ]);
+    // Use TMDB's Multi-Search endpoint to fetch both movies and TV shows instantly
+    const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
+    const { data } = await axios.get(tmdbUrl);
+    const results = data.results || [];
 
-    // Combine and sort/slice top results
-    const combinedResults = [
-      ...(movieResults || []).map(item => ({ ...item, media_type: 'movie' })),
-      ...(tvResults || []).map(item => ({ ...item, media_type: 'tv' }))
-    ];
+    // Filter out people, keeping only movies and tv shows
+    const validResults = results.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
 
-    if (combinedResults.length > 0) {
-      const topResults = combinedResults.slice(0, 5);
+    if (validResults.length > 0) {
+      const topResults = validResults.slice(0, 5);
 
-      await ctx.reply(`🔎 *Found ${combinedResults.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
+      await ctx.reply(`🔎 *Found ${validResults.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
         parse_mode: 'Markdown'
       });
 
       for (const item of topResults) {
         try {
-          const mediaType = item.media_type || 'movie';
+          const mediaType = item.media_type; // 'movie' or 'tv'
           const details = await getMovieDetails(item.id, mediaType);
           if (!details) continue;
 
@@ -168,19 +164,18 @@ bot.on('text', async (ctx) => {
 
           const queryEncoded = encodeURIComponent(title);
           
-          // Dynamic button configuration depending on whether it's a movie or series
           let buttonRows = [];
           if (mediaType === 'tv') {
-            // Series buttons: Prioritize VideoDownloader for series & VidSrc TV embed
+            // Series layout: VideoDownloader + TV Stream link
             buttonRows = [
               [Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
               [Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
             ];
           } else {
-            // Movie buttons: Both servers + Movie streaming
+            // Movie layout: 9jaRocks + VideoDownloader + Movie Stream link
             buttonRows = [
-              [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-              [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
+              [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+              [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
               [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
             ];
           }
@@ -202,11 +197,11 @@ bot.on('text', async (ctx) => {
         }
       }
     } else {
-      // 2. FALLBACK FOR NON-TMDB TITLES (Nollywood/Asian/Custom series names)
+      // Fallback for custom or non-TMDB series/movies
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
