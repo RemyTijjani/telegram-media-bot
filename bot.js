@@ -26,9 +26,10 @@ function cleanUrl(value) {
 function movieButtons(movieId) {
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback('480p', `quality:${movieId}:480`),
-      Markup.button.callback('720p', `quality:${movieId}:720`),
-      Markup.button.callback('1080p', `quality:${movieId}:1080`)
+  
+  Markup.button.url('▶️ Stream Server 1', `https://vidsrc.to/embed/movie/${movieId}`),
+  Markup.button.url('🍿 Stream Server 2', `https://multiembed.mov/?video_id=${movieId}&tmdb=1`)
+
     ]
   ]);
 }
