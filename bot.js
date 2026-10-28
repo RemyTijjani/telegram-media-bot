@@ -258,3 +258,4 @@ bot.on('text', async (ctx) => {
     ctx.reply('⚠️ Something went wrong while searching. Please try again.');
   }
 });
+module.exports = bot;
