@@ -216,12 +216,7 @@ bot.action(/^select_movie_(\d+)$/, async (ctx) => {
     ctx.answerCbQuery('⚠️ Failed to load movie details.');
   }
 });
-      }
-    } catch (error) {
-      console.error('Social download failed:', error.message);
-      await ctx.reply('I could not process that link. Check that it is public and try again.');
-    }
-    return;
+    
   }
 
   await ctx.replyWithChatAction('typing');
