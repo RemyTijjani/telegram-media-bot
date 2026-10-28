@@ -125,7 +125,7 @@ bot.on('photo', async (ctx) => {
 });
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES (WITH DIRECT FALLBACK)
+// 🔍 HANDLE USER TEXT SEARCHES (MOVIES & SERIES)
 // ==========================================
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
@@ -135,39 +135,61 @@ bot.on('text', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    // 1. Try fetching from TMDB search
-    let results = await searchMovies(searchQuery);
+    // 1. Search both Movies and TV Series simultaneously on TMDB
+    const [movieResults, tvResults] = await Promise.all([
+      searchMovies(searchQuery, 'movie').catch(() => []),
+      searchMovies(searchQuery, 'tv').catch(() => [])
+    ]);
 
-    // 2. If TMDB finds results, display them normally
-    if (results && results.length > 0) {
-      const topResults = results.slice(0, 5);
+    // Combine and sort/slice top results
+    const combinedResults = [
+      ...(movieResults || []).map(item => ({ ...item, media_type: 'movie' })),
+      ...(tvResults || []).map(item => ({ ...item, media_type: 'tv' }))
+    ];
 
-      await ctx.reply(`🔎 *Found ${results.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
+    if (combinedResults.length > 0) {
+      const topResults = combinedResults.slice(0, 5);
+
+      await ctx.reply(`🔎 *Found ${combinedResults.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
         parse_mode: 'Markdown'
       });
 
-      for (const movieItem of topResults) {
+      for (const item of topResults) {
         try {
-          const movie = await getMovieDetails(movieItem.id, 'movie');
-          if (!movie) continue;
+          const mediaType = item.media_type || 'movie';
+          const details = await getMovieDetails(item.id, mediaType);
+          if (!details) continue;
 
-          const title = movie.title || movie.name || 'Unknown Title';
-          const releaseDate = movie.release_date || movie.first_air_date || '';
+          const title = details.title || details.name || 'Unknown Title';
+          const releaseDate = details.release_date || details.first_air_date || '';
           const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-          const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '⭐ N/A';
-          const overview = movie.overview ? movie.overview.slice(0, 300) + '...' : 'No description available.';
+          const rating = details.vote_average ? `⭐ ${details.vote_average.toFixed(1)}/10` : '⭐ N/A';
+          const overview = details.overview ? details.overview.slice(0, 300) + '...' : 'No description available.';
 
-          const movieTitleQuery = encodeURIComponent(title);
-          const actionButtons = Markup.inlineKeyboard([
-            [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${movieTitleQuery}`)],
-            [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${movieTitleQuery}`)],
-            [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)]
-          ]);
+          const queryEncoded = encodeURIComponent(title);
+          
+          // Dynamic button configuration depending on whether it's a movie or series
+          let buttonRows = [];
+          if (mediaType === 'tv') {
+            // Series buttons: Prioritize VideoDownloader for series & VidSrc TV embed
+            buttonRows = [
+              [Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+              [Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
+            ];
+          } else {
+            // Movie buttons: Both servers + Movie streaming
+            buttonRows = [
+              [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+              [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
+              [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
+            ];
+          }
 
-          const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
+          const actionButtons = Markup.inlineKeyboard(buttonRows);
+          const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
 
-          if (movie.poster_path) {
-            await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
+          if (details.poster_path) {
+            await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${details.poster_path}`, {
               caption: caption,
               parse_mode: 'Markdown',
               ...actionButtons
@@ -176,15 +198,15 @@ bot.on('text', async (ctx) => {
             await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
           }
         } catch (err) {
-          console.error(`Error loading movie ID ${movieItem.id}:`, err);
+          console.error(`Error loading item ID ${item.id}:`, err);
         }
       }
     } else {
-      // 3. FALLBACK FOR NON-TMDB TITLES (like YouTube Nollywood movies)
+      // 2. FALLBACK FOR NON-TMDB TITLES (Nollywood/Asian/Custom series names)
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
