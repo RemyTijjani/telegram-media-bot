@@ -217,36 +217,44 @@ bot.action(/^select_movie_(\d+)$/, async (ctx) => {
   }
 });
     
-  }
+  // ==========================================
+// 🔍 HANDLE USER TEXT SEARCHES (MULTI-RESULT)
+// ==========================================
+bot.on('text', async (ctx) => {
+  if (ctx.message.text.startsWith('/')) return;
 
-  await ctx.replyWithChatAction('typing');
+  const searchQuery = ctx.message.text.trim();
+
   try {
-    const results = await searchMovies(text);
-    if (!results.length) {
-      await ctx.reply('I could not find that movie or show. Try the full title or a different spelling.');
-      return;
+    await ctx.replyWithChatAction('typing');
+
+    // Use your project's existing searchMovies service
+    const results = await searchMovies(searchQuery);
+
+    if (!results || results.length === 0) {
+      return ctx.reply(`❌ No movies found matching *"${searchQuery}"*. Try another title!`, { parse_mode: 'Markdown' });
     }
-    const movie = await getMovieDetails(results[0].id, results[0].media_type);
-   const options = movieButtons(movie.id, movie.title || movie.name);
-    if (movie.poster_path) {
-      await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
-        caption: movieCaption(movie),
-        ...options
-      });
-    } else {
-      await ctx.reply(movieCaption(movie), options);
-    }
+
+    // Limit to top 5 results for clean display
+    const topResults = results.slice(0, 5);
+
+    // Build Inline Buttons for each search result
+    const buttons = topResults.map((movie) => {
+      const title = movie.title || movie.name || 'Unknown Title';
+      const releaseDate = movie.release_date || movie.first_air_date || '';
+      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+      return [Markup.button.callback(`🎬 ${title}${year}`, `select_movie_${movie.id}`)];
+    });
+
+    await ctx.reply(
+      `🔎 *Found results for "${searchQuery}":*\nSelect a movie from the list below:`,
+      {
+        parse_mode: 'Markdown',
+        ...Markup.inlineKeyboard(buttons)
+      }
+    );
   } catch (error) {
-    console.error('Movie search failed:', error.message);
-    await ctx.reply('Movie search is temporarily unavailable. Please try again shortly.');
+    console.error('Search Error:', error);
+    ctx.reply('⚠️ Something went wrong while searching. Please try again.');
   }
 });
-
-bot.action(/^quality:(\d+):(480|720|1080)$/, async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply('Movie streaming links are not configured. Use a licensed service to watch this title.');
-});
-
-bot.catch((error) => console.error('Unhandled bot error:', error));
-
-module.exports = bot;
