@@ -125,27 +125,38 @@ bot.on('photo', async (ctx) => {
 });
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES (SEND ALL POSTERS & DETAILS)
+// 🔍 HANDLE USER TEXT SEARCHES (WITH SMART FALLBACK)
 // ==========================================
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
 
-  const searchQuery = ctx.message.text.trim();
+  const rawQuery = ctx.message.text.trim();
 
   try {
     await ctx.replyWithChatAction('typing');
 
-    // Fetch search results using your TMDB helper
-    const results = await searchMovies(searchQuery);
+    // 1. Try searching with the exact query first
+    let results = await searchMovies(rawQuery);
+
+    // 2. Fallback: If no results, try cleaning up common conversational filler words
+    if (!results || results.length === 0) {
+      const cleanQuery = rawQuery
+        .replace(/my|download|stream|watch|movie|film|free/gi, '')
+        .trim();
+
+      if (cleanQuery.length > 0 && cleanQuery !== rawQuery) {
+        results = await searchMovies(cleanQuery);
+      }
+    }
 
     if (!results || results.length === 0) {
-      return ctx.reply(`❌ No movies found matching *"${searchQuery}"*. Try another title!`, { parse_mode: 'Markdown' });
+      return ctx.reply(`❌ No movies found matching *"${rawQuery}"*. Try typing just the movie title!`, { parse_mode: 'Markdown' });
     }
 
     // Limit to top 5 movies to prevent reaching Telegram rate limits
     const topResults = results.slice(0, 5);
 
-    await ctx.reply(`🔎 *Found ${results.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
+    await ctx.reply(`🔎 *Found ${results.length} result(s) for "${rawQuery}". Showing top ${topResults.length}:*`, {
       parse_mode: 'Markdown'
     });
 
@@ -161,7 +172,7 @@ bot.on('text', async (ctx) => {
         const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '⭐ N/A';
         const overview = movie.overview ? movie.overview.slice(0, 300) + '...' : 'No description available.';
 
-      // Action buttons for downloading & streaming
+        // Action buttons for downloading & streaming (Servers 1 & 2 + Streaming)
         const movieTitleQuery = encodeURIComponent(title);
         const actionButtons = Markup.inlineKeyboard([
           [
