@@ -272,4 +272,92 @@ bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
 
 // Handle dummy click on page indicator button
 bot.action('noop', (ctx) => ctx.answerCbQuery());
+// Handle dummy click on page indicator button
+bot.action('noop', (ctx) => ctx.answerCbQuery());
+
+// ==========================================
+// 🆕 /LATEST COMMAND & AVAILABILITY CHECK
+// ==========================================
+async function checkAvailability(title) {
+  const query = encodeURIComponent(title);
+  
+  const [has9jaRocks, hasVideoDownloader] = await Promise.all([
+    axios.head(`https://9jarocks.net/latest?s=${query}`).then(res => res.status === 200).catch(() => false),
+    axios.head(`https://videodownloader.site/?q=${query}`).then(res => res.status === 200).catch(() => false)
+  ]);
+
+  return {
+    has9jaRocks,
+    hasVideoDownloader,
+    isAvailable: has9jaRocks || hasVideoDownloader
+  };
+}
+
+bot.command('latest', async (ctx) => {
+  try {
+    await ctx.replyWithChatAction('typing');
+
+    const tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=${process.env.TMDB_API_KEY}`;
+    const { data } = await axios.get(tmdbUrl);
+    const results = (data.results || []).filter(item => item.media_type === 'movie' || item.media_type === 'tv').slice(0, 5);
+
+    if (results.length === 0) {
+      return ctx.reply('⚠️ No new releases found at the moment.');
+    }
+
+    await ctx.reply('🔥 *Latest Movies & Series Releases:*', { parse_mode: 'Markdown' });
+
+    for (const item of results) {
+      const mediaType = item.media_type;
+      const title = item.title || item.name || 'Unknown Title';
+      const releaseDate = item.release_date || item.first_air_date || 'Coming Soon';
+      const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
+      const overview = item.overview ? item.overview.slice(0, 250) + '...' : 'No description available.';
+
+      const queryEncoded = encodeURIComponent(title);
+      const status = await checkAvailability(title);
+
+      let buttonRows = [];
+
+      if (status.isAvailable) {
+        if (mediaType === 'tv') {
+          if (status.hasVideoDownloader) {
+            buttonRows.push([Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
+          }
+          buttonRows.push([Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${item.id}`)]);
+        } else {
+          if (status.has9jaRocks) {
+            buttonRows.push([Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
+          }
+          if (status.hasVideoDownloader) {
+            buttonRows.push([Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
+          }
+          buttonRows.push([Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${item.id}`)]);
+        }
+      }
+
+      const caption = `🎬 *${title}* (${releaseDate.split('-')[0] || '2026'})\n🏷️ Type: *${mediaType.toUpperCase()}*\n${rating}\n\n📝 *Overview:*\n${overview}${!status.isAvailable ? '\n\n⏳ *Status:* _Not yet available for download/stream._' : ''}`;
+
+      if (buttonRows.length > 0) {
+        const actionButtons = Markup.inlineKeyboard(buttonRows);
+        if (item.poster_path) {
+          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown', ...actionButtons });
+        } else {
+          await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+        }
+      } else {
+        if (item.poster_path) {
+          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown' });
+        } else {
+          await ctx.reply(caption, { parse_mode: 'Markdown' });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error fetching latest updates:', error);
+    ctx.reply('⚠️ Failed to load latest releases.');
+  }
+});
+
+module.exports = bot;
 module.exports = bot;
