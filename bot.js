@@ -23,14 +23,18 @@ function cleanUrl(value) {
   return value.replace(/[),.!?]+$/, '');
 }
 
-function movieButtons(movieId) {
+function movieButtons(movieId, movieTitle) {
+  // Format the movie title safely for the web search URL
+  const query = encodeURIComponent(movieTitle);
+
   return Markup.inlineKeyboard([
     [
-  
-  Markup.button.url('▶️ Stream Server 1', `https://vidsrc.to/embed/movie/${movieId}`),
-  Markup.button.url('🍿 Stream Server 2', `https://multiembed.mov/?video_id=${movieId}&tmdb=1`),
-      Markup.button.url('📥 Download / Stream Movie', `https://multiembed.mov/?video_id=${movieId}&tmdb=1`)
-
+      // Button 1: Takes user straight to videodownloader.site with the movie title pre-filled
+      Markup.button.url('📥 Download Movie', `https://videodownloader.site/?s=${query}`)
+    ],
+    [
+      // Button 2: Stream button for instant playback
+      Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movieId}`)
     ]
   ]);
 }
