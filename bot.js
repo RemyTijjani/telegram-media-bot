@@ -258,4 +258,60 @@ bot.on('text', async (ctx) => {
     ctx.reply('⚠️ Something went wrong while searching. Please try again.');
   }
 });
+// ==========================================
+// 🎯 HANDLE MOVIE SELECTION CLICK (POSTER & DETAILS)
+// ==========================================
+bot.action(/^select_movie_(\d+)$/, async (ctx) => {
+  const movieId = ctx.match[1]; // Get TMDB movie ID from regex
+
+  try {
+    // Stop the loading spinner on the clicked button
+    await ctx.answerCbQuery();
+
+    await ctx.replyWithChatAction('typing');
+
+    // Fetch details for the selected movie using your project's helper
+    const movie = await getMovieDetails(movieId, 'movie');
+
+    if (!movie) {
+      return ctx.reply('⚠️ Could not fetch details for this movie.');
+    }
+
+    const title = movie.title || movie.name || 'Unknown Title';
+    const releaseDate = movie.release_date || movie.first_air_date || '';
+    const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+    const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '';
+    const overview = movie.overview ? movie.overview.slice(0, 300) + '...' : 'No description available.';
+
+    // Download & Stream Action Buttons
+    const movieTitleQuery = encodeURIComponent(title);
+    const actionButtons = Markup.inlineKeyboard([
+      [
+        Markup.button.webApp('📥 Download via 9jaRocks', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
+      ],
+      [
+        Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)
+      ]
+    ]);
+
+    const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
+
+    // Send poster image with details caption if poster_path exists
+    if (movie.poster_path) {
+      await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
+        caption: caption,
+        parse_mode: 'Markdown',
+        ...actionButtons
+      });
+    } else {
+      await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        ...actionButtons
+      });
+    }
+  } catch (error) {
+    console.error('Callback Error:', error);
+    ctx.answerCbQuery('⚠️ Failed to load movie details.');
+  }
+});
 module.exports = bot;
