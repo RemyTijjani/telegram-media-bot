@@ -125,100 +125,7 @@ bot.on('photo', async (ctx) => {
 });
 
 // ==========================================
-// 🔍 1. HANDLE USER TEXT SEARCHES (MULTI-RESULT)
-// ==========================================
-bot.on('text', async (ctx) => {
-  // Ignore command messages like /start or /help
-  if (ctx.message.text.startsWith('/')) return;
-
-  const searchQuery = ctx.message.text.trim();
-
-  try {
-    // Search TMDB for the query
-    const tmdbUrl = `https://api.themoviedb.org/3/search/movie?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
-    const { data } = await axios.get(tmdbUrl);
-
-    if (!data.results || data.results.length === 0) {
-      return ctx.reply(`❌ No movies found matching *"${searchQuery}"*. Try another title!`, { parse_mode: 'Markdown' });
-    }
-
-    // Limit to top 5 results for clean display
-    const topResults = data.results.slice(0, 5);
-
-    // Build Inline Buttons for each search result
-    const buttons = topResults.map((movie) => {
-      const year = movie.release_date ? ` (${movie.release_date.split('-')[0]})` : '';
-      return [Markup.button.callback(`🎬 ${movie.title}${year}`, `select_movie_${movie.id}`)];
-    });
-
-    await ctx.reply(
-      `🔎 *Found ${data.results.length} results for "${searchQuery}":*\nSelect a movie from the list below:`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard(buttons)
-      }
-    );
-  } catch (error) {
-    console.error('Search Error:', error);
-    ctx.reply('⚠️ Something went wrong while searching. Please try again.');
-  }
-});
-// ==========================================
-// 🎯 2. HANDLE MOVIE SELECTION CLICK
-// ==========================================
-bot.action(/^select_movie_(\d+)$/, async (ctx) => {
-  const movieId = ctx.match[1]; // Get TMDB movie ID from regex
-
-  try {
-    // Fetch full details for the chosen movie
-    const movieUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${process.env.TMDB_API_KEY}`;
-    const { data: movie } = await axios.get(movieUrl);
-
-    const title = movie.title;
-    const year = movie.release_date ? movie.release_date.split('-')[0] : 'N/A';
-    const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '';
-    const overview = movie.overview ? movie.overview.slice(0, 250) + '...' : 'No description available.';
-
-    // Create action buttons for streaming & downloads
-    const movieTitleQuery = encodeURIComponent(title);
-    const actionButtons = Markup.inlineKeyboard([
-      [
-        Markup.button.webApp('📥 Download via 9jaRocks', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
-      ],
-      [
-        Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${movieTitleQuery}`)
-      ],
-      [
-        Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)
-      ]
-    ]);
-
-    const caption = `🎬 *${title}* (${year})\n${rating}\n\n📝 *Overview:*\n${overview}`;
-
-    // Stop loading indicator on the clicked button
-    await ctx.answerCbQuery();
-
-    // Send poster if available, otherwise send text
-    if (movie.poster_path) {
-      await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
-        caption: caption,
-        parse_mode: 'Markdown',
-        ...actionButtons
-      });
-    } else {
-      await ctx.reply(caption, {
-        parse_mode: 'Markdown',
-        ...actionButtons
-      });
-    }
-  } catch (error) {
-    console.error('Callback Error:', error);
-    ctx.answerCbQuery('⚠️ Failed to load movie details.');
-  }
-});
-    
-  // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES (MULTI-RESULT)
+// 🔍 HANDLE USER TEXT SEARCHES (SEND ALL POSTERS & DETAILS)
 // ==========================================
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
@@ -228,31 +135,62 @@ bot.on('text', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    // Use your project's existing searchMovies service
+    // Fetch search results using your TMDB helper
     const results = await searchMovies(searchQuery);
 
     if (!results || results.length === 0) {
       return ctx.reply(`❌ No movies found matching *"${searchQuery}"*. Try another title!`, { parse_mode: 'Markdown' });
     }
 
-    // Limit to top 5 results for clean display
+    // Limit to top 5 movies to prevent reaching Telegram rate limits
     const topResults = results.slice(0, 5);
 
-    // Build Inline Buttons for each search result
-    const buttons = topResults.map((movie) => {
-      const title = movie.title || movie.name || 'Unknown Title';
-      const releaseDate = movie.release_date || movie.first_air_date || '';
-      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-      return [Markup.button.callback(`🎬 ${title}${year}`, `select_movie_${movie.id}`)];
+    await ctx.reply(`🔎 *Found ${results.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
+      parse_mode: 'Markdown'
     });
 
-    await ctx.reply(
-      `🔎 *Found results for "${searchQuery}":*\nSelect a movie from the list below:`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard(buttons)
+    // Loop through each movie and fetch full details + poster
+    for (const movieItem of topResults) {
+      try {
+        const movie = await getMovieDetails(movieItem.id, 'movie');
+        if (!movie) continue;
+
+        const title = movie.title || movie.name || 'Unknown Title';
+        const releaseDate = movie.release_date || movie.first_air_date || '';
+        const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+        const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '⭐ N/A';
+        const overview = movie.overview ? movie.overview.slice(0, 300) + '...' : 'No description available.';
+
+        // Action buttons for downloading & streaming
+        const movieTitleQuery = encodeURIComponent(title);
+        const actionButtons = Markup.inlineKeyboard([
+          [
+            Markup.button.webApp('📥 Download via 9jaRocks', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
+          ],
+          [
+            Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)
+          ]
+        ]);
+
+        const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
+
+        // Send poster with details caption
+        if (movie.poster_path) {
+          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${movie.poster_path}`, {
+            caption: caption,
+            parse_mode: 'Markdown',
+            ...actionButtons
+          });
+        } else {
+          await ctx.reply(caption, {
+            parse_mode: 'Markdown',
+            ...actionButtons
+          });
+        }
+      } catch (err) {
+        console.error(`Error loading movie ID ${movieItem.id}:`, err);
       }
-    );
+    }
   } catch (error) {
     console.error('Search Error:', error);
     ctx.reply('⚠️ Something went wrong while searching. Please try again.');
