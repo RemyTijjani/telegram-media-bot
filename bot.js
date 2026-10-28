@@ -30,11 +30,11 @@ function movieButtons(movieId, movieTitle) {
   return Markup.inlineKeyboard([
     [
       // Button 1: Takes user straight to videodownloader.site with the movie title pre-filled
-      Markup.button.url('📥 Download Movie', `https://videodownloader.site/?q=${query}`)
+      Markup.button.webApp('📥 Download Movie', `https://videodownloader.site/?q=${query}`)
     ],
     [
       // Button 2: Stream button for instant playback
-      Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movieId}`)
+      Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movieId}`)
     ]
   ]);
 }
