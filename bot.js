@@ -7,6 +7,35 @@ const { identifyActor } = require('./services/actorMatcher');
 dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+// ==========================================
+// 🛠️ AUTOMATIC BOT PROFILE & COMMAND SETUP
+// ==========================================
+async function setupBotProfile() {
+  try {
+    // 1. Set Menu Commands (Shown in bottom-left / menu button)
+    await bot.telegram.setMyCommands([
+      { command: 'start', description: '🚀 Start the bot & view main menu' },
+      { command: 'help', description: '❓ Get help and usage instructions' }
+    ]);
+
+    // 2. Set Main Description (Seen on welcome screen before clicking Start)
+    await bot.telegram.setMyDescription(
+      "🎬 Search, stream online, and download HD movies & TV series directly inside Telegram!\n\nFast streams & high-speed direct downloads."
+    );
+
+    // 3. Set Short Description (Seen in bot profile preview)
+    await bot.telegram.setMyShortDescription(
+      "🍿 Watch and download movies & TV series inside Telegram."
+    );
+
+    console.log("✅ Bot commands & profile setup complete!");
+  } catch (error) {
+    console.error("⚠️ Failed to set bot commands/description:", error);
+  }
+}
+
+// Run setup on bot launch
+setupBotProfile();
 const SOCIAL_URL_PATTERN = /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com)\/[^\s<]+/i;
 
 const startMessage = [
