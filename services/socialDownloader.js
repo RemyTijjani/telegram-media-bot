@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 async function downloadMedia(url) {
-  const cobaltUrl = process.env.COBALT_API_URL || 'https://api.cobalt.tools/';
+  const cobaltUrl = process.env.COBALT_API_URL || 'https://sunny.imput.net/';
   const response = await axios.post(cobaltUrl, {
     url,
     videoQuality: '720',
