@@ -161,11 +161,14 @@ bot.on('text', async (ctx) => {
         const rating = movie.vote_average ? `⭐ ${movie.vote_average.toFixed(1)}/10` : '⭐ N/A';
         const overview = movie.overview ? movie.overview.slice(0, 300) + '...' : 'No description available.';
 
-        // Action buttons for downloading & streaming
+      // Action buttons for downloading & streaming
         const movieTitleQuery = encodeURIComponent(title);
         const actionButtons = Markup.inlineKeyboard([
           [
-            Markup.button.webApp('📥 Download via 9jaRocks', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
+            Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
+          ],
+          [
+            Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${movieTitleQuery}`)
           ],
           [
             Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)
