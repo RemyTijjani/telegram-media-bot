@@ -125,79 +125,29 @@ bot.on('photo', async (ctx) => {
 });
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES (MOVIES & SERIES via MULTI-SEARCH)
+// 🍿 HELPER FUNCTION TO RENDER PAGINATED RESULTS
 // ==========================================
-bot.on('text', async (ctx) => {
-  if (ctx.message.text.startsWith('/')) return;
+async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = false) {
+  const itemsPerPage = 5;
 
-  const searchQuery = ctx.message.text.trim();
+  // TMDB pages return 20 items per request. Calculate which TMDB page to fetch:
+  const tmdbPage = Math.ceil((pageNum * itemsPerPage) / 20);
+  const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${tmdbPage}`;
 
-  try {
-    await ctx.replyWithChatAction('typing');
+  const { data } = await axios.get(tmdbUrl);
+  const rawResults = data.results || [];
 
-    // Use TMDB's Multi-Search endpoint to fetch both movies and TV shows instantly
-    const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
-    const { data } = await axios.get(tmdbUrl);
-    const results = data.results || [];
+  // Filter out people (only keep movies & tv)
+  const validResults = rawResults.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
 
-    // Filter out people, keeping only movies and tv shows
-    const validResults = results.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
+  // Total results and total pages calculation based on 5 items per view
+  const totalResults = data.total_results || validResults.length;
+  const totalPages = Math.ceil(totalResults / itemsPerPage) || 1;
 
-    if (validResults.length > 0) {
-      const topResults = validResults.slice(0, 5);
-
-      await ctx.reply(`🔎 *Found ${validResults.length} result(s) for "${searchQuery}". Showing top ${topResults.length}:*`, {
-        parse_mode: 'Markdown'
-      });
-
-      for (const item of topResults) {
-        try {
-          const mediaType = item.media_type; // 'movie' or 'tv'
-          const details = await getMovieDetails(item.id, mediaType);
-          if (!details) continue;
-
-          const title = details.title || details.name || 'Unknown Title';
-          const releaseDate = details.release_date || details.first_air_date || '';
-          const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-          const rating = details.vote_average ? `⭐ ${details.vote_average.toFixed(1)}/10` : '⭐ N/A';
-          const overview = details.overview ? details.overview.slice(0, 300) + '...' : 'No description available.';
-
-          const queryEncoded = encodeURIComponent(title);
-          
-          let buttonRows = [];
-          if (mediaType === 'tv') {
-            // Series layout: VideoDownloader + TV Stream link
-            buttonRows = [
-              [Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
-              [Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
-            ];
-          } else {
-            // Movie layout: 9jaRocks + VideoDownloader + Movie Stream link
-            buttonRows = [
-              [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-              [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
-              [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
-            ];
-          }
-
-          const actionButtons = Markup.inlineKeyboard(buttonRows);
-          const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
-
-          if (details.poster_path) {
-            await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${details.poster_path}`, {
-              caption: caption,
-              parse_mode: 'Markdown',
-              ...actionButtons
-            });
-          } else {
-            await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
-          }
-        } catch (err) {
-          console.error(`Error loading item ID ${item.id}:`, err);
-        }
-      }
-    } else {
-      // Fallback for custom or non-TMDB series/movies
+  if (validResults.length === 0) {
+    if (isCallback) await ctx.answerCbQuery('No more results found.');
+    else {
+      // Fallback for custom or non-TMDB titles
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
         [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${encodedQuery}`)],
@@ -206,15 +156,120 @@ bot.on('text', async (ctx) => {
 
       await ctx.reply(
         `🎬 *Search Results for "${searchQuery}":*\n\n*Overview:*\nRequested title processed via download servers. Click below to download or search your title on the platforms.`,
-        {
-          parse_mode: 'Markdown',
-          ...fallbackButtons
-        }
+        { parse_mode: 'Markdown', ...fallbackButtons }
       );
     }
+    return;
+  }
+
+  // Calculate slice range for 5 items per page
+  const indexOnTmdbPage = ((pageNum - 1) % 4) * itemsPerPage;
+  const pageItems = validResults.slice(indexOnTmdbPage, indexOnTmdbPage + itemsPerPage);
+
+  // Send header message
+  await ctx.reply(`🔎 *Found ${totalResults} result(s) for "${searchQuery}" (Page ${pageNum} of ${totalPages}):*`, {
+    parse_mode: 'Markdown'
+  });
+
+  // Loop through items on the current page
+  for (const item of pageItems) {
+    try {
+      const mediaType = item.media_type;
+      const details = await getMovieDetails(item.id, mediaType);
+      if (!details) continue;
+
+      const title = details.title || details.name || 'Unknown Title';
+      const releaseDate = details.release_date || details.first_air_date || '';
+      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+      const rating = details.vote_average ? `⭐ ${details.vote_average.toFixed(1)}/10` : '⭐ N/A';
+      const overview = details.overview ? details.overview.slice(0, 250) + '...' : 'No description available.';
+
+      const queryEncoded = encodeURIComponent(title);
+
+      let buttonRows = [];
+      if (mediaType === 'tv') {
+        buttonRows = [
+          [Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
+        ];
+      } else {
+        buttonRows = [
+          [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+          [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
+        ];
+      }
+
+      const actionButtons = Markup.inlineKeyboard(buttonRows);
+      const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
+
+      if (details.poster_path) {
+        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${details.poster_path}`, {
+          caption: caption,
+          parse_mode: 'Markdown',
+          ...actionButtons
+        });
+      } else {
+        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+      }
+    } catch (err) {
+      console.error(`Error loading item ID ${item.id}:`, err);
+    }
+  }
+
+  // Generate Navigation Bar (Next / Prev Buttons)
+  const navButtons = [];
+
+  if (pageNum > 1) {
+    navButtons.push(Markup.button.callback('◀️ Previous', `page_${pageNum - 1}_${encodeURIComponent(searchQuery)}`));
+  }
+
+  navButtons.push(Markup.button.callback(`📄 Page ${pageNum}/${totalPages}`, 'noop'));
+
+  if (pageNum < totalPages) {
+    navButtons.push(Markup.button.callback('Next ▶️', `page_${pageNum + 1}_${encodeURIComponent(searchQuery)}`));
+  }
+
+  await ctx.reply(`Navigation for *"${searchQuery}"*:`, {
+    parse_mode: 'Markdown',
+    ...Markup.inlineKeyboard([navButtons])
+  });
+}
+
+// ==========================================
+// 🔍 HANDLE USER TEXT SEARCHES
+// ==========================================
+bot.on('text', async (ctx) => {
+  if (ctx.message.text.startsWith('/')) return;
+
+  const searchQuery = ctx.message.text.trim();
+
+  try {
+    await ctx.replyWithChatAction('typing');
+    await renderPageResults(ctx, searchQuery, 1, false);
   } catch (error) {
     console.error('Search Error:', error);
     ctx.reply('⚠️ Something went wrong while searching. Please try again.');
   }
 });
+
+// ==========================================
+// 🔄 HANDLE PAGINATION CLICK (NEXT / PREV)
+// ==========================================
+bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
+  const targetPage = parseInt(ctx.match[1], 10);
+  const searchQuery = decodeURIComponent(ctx.match[2]);
+
+  try {
+    await ctx.answerCbQuery(`Loading Page ${targetPage}...`);
+    await ctx.replyWithChatAction('typing');
+    await renderPageResults(ctx, searchQuery, targetPage, true);
+  } catch (error) {
+    console.error('Pagination Callback Error:', error);
+    await ctx.answerCbQuery('⚠️ Failed to load page.');
+  }
+});
+
+// Handle dummy click on page indicator button
+bot.action('noop', (ctx) => ctx.answerCbQuery());
 module.exports = bot;
