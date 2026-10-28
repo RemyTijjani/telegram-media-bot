@@ -165,10 +165,10 @@ bot.on('text', async (ctx) => {
         const movieTitleQuery = encodeURIComponent(title);
         const actionButtons = Markup.inlineKeyboard([
           [
-            Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
+            Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${movieTitleQuery}`)
           ],
           [
-            Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${movieTitleQuery}`)
+            Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${movieTitleQuery}`)
           ],
           [
             Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movie.id}`)
