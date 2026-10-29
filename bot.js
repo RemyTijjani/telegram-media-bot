@@ -187,8 +187,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
       // Fallback for custom or non-TMDB titles
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
@@ -231,8 +231,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
         ];
       } else {
         buttonRows = [
-          [Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-          [Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+          [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
           [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
         ];
       }
