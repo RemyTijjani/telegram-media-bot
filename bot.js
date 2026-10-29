@@ -8,6 +8,46 @@ const { identifyActor } = require('./services/actorMatcher');
 dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
+dotenv.config();
+
+const bot = new Telegraf(process.env.BOT_TOKEN);
+
+// ==========================================
+// 📢 FORCE-JOIN CHANNEL MIDDLEWARE (PASTE HERE)
+// ==========================================
+const CHANNEL_USERNAME = '@EMPTYMOVIEBOX'; // 👈 Replace with your channel username
+
+bot.use(async (ctx, next) => {
+  // Allow /start command or non-private chats without blocking
+  if (ctx.chat?.type !== 'private' || !ctx.message?.text || ctx.message.text.startsWith('/start')) {
+    return next();
+  }
+
+  try {
+    const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, ctx.from.id);
+    const isSubscribed = ['creator', 'administrator', 'member'].includes(member.status);
+
+    if (!isSubscribed) {
+      const channelLink = `https://t.me/${CHANNEL_USERNAME.replace('@', '')}`;
+      
+      return ctx.reply(
+        `⚠️ *Access Restricted!*\n\nTo use this bot, you must be a member of our official channel.\n\nPlease join ${CHANNEL_USERNAME} and search again!`,
+        {
+          parse_mode: 'Markdown',
+          ...Markup.inlineKeyboard([
+            [Markup.button.url('📢 Join Channel First', channelLink)]
+          ])
+        }
+      );
+    }
+  } catch (err) {
+    console.error('Force-join check error:', err);
+  }
+
+  return next();
+});
+
+// ... rest of your code (bot.command, bot.on, etc.)
 // ==========================================
 // 🛠️ AUTOMATIC BOT PROFILE & COMMAND SETUP
 // ==========================================
