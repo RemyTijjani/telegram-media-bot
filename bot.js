@@ -8,9 +8,6 @@ const { identifyActor } = require('./services/actorMatcher');
 dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
-dotenv.config();
-
-const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ==========================================
 // 📢 FORCE-JOIN CHANNEL MIDDLEWARE (PASTE HERE)
