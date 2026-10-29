@@ -187,8 +187,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
       // Fallback for custom or non-TMDB titles
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.url ('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.url ('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
@@ -226,14 +226,14 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
       let buttonRows = [];
       if (mediaType === 'tv') {
         buttonRows = [
-          [Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
+          [Markup.button.url ('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.url('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
         ];
       } else {
         buttonRows = [
-          [Markup.button.webApp('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-          [Markup.button.webApp('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
+          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
         ];
       }
 
