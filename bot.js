@@ -1,6 +1,8 @@
+const dotenv = require('dotenv');
+dotenv.config();
+
 const axios = require('axios');
 const { Telegraf, Markup } = require('telegraf');
-const dotenv = require('dotenv');
 const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
