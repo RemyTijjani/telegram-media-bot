@@ -266,69 +266,10 @@ bot.action(/^fastsearch_(.+)$/, async (ctx) => {
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// 🆕 /LATEST COMMAND (FIXED & HIGH-SPEED)
+// ⚡ ULTRA-FAST SAFE PHOTO HANDLER (WITH 5s SAFETY TIMEOUT)
 // ==========================================
-bot.command('latest', async (ctx) => {
-  try {
-    await ctx.replyWithChatAction('typing');
-
-    const tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=${process.env.TMDB_API_KEY}`;
-    const { data } = await axios.get(tmdbUrl, { timeout: 4000 });
-    
-    const results = (data.results || [])
-      .filter(item => item.media_type === 'movie' || item.media_type === 'tv' || item.title || item.name)
-      .slice(0, 5);
-
-    if (!results || results.length === 0) {
-      return ctx.reply('⚠️ No new releases found at the moment.');
-    }
-
-    await ctx.reply('🔥 *Latest Trending Movies & Series Releases:*', { parse_mode: 'Markdown' });
-
-    for (const item of results) {
-      try {
-        const isTv = item.media_type === 'tv' || (!item.title && item.name);
-        const mediaType = isTv ? 'tv' : 'movie';
-        const title = item.title || item.name || 'Unknown Title';
-        const releaseDate = item.release_date || item.first_air_date || '';
-        const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-        const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-        const overview = item.overview ? item.overview.slice(0, 200) + '...' : 'No description available.';
-
-        const queryEncoded = encodeURIComponent(title);
-        const directServer1 = await fetchDirectDownloadLink(title);
-        const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
-
-        const actionButtons = Markup.inlineKeyboard([
-          [Markup.button.url('📥 Download Server 1', server1Url)],
-          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
-          [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType}/${item.id}`)]
-        ]);
-
-        const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
-
-        if (item.poster_path) {
-          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
-            caption,
-            parse_mode: 'Markdown',
-            ...actionButtons
-          });
-        } else {
-          await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
-        }
-      } catch (itemError) {
-        console.error('Error rendering individual latest item:', itemError);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching latest updates:', error?.response?.data || error.message);
-    ctx.reply('⚠️ Failed to load latest releases. Please try again.');
-  }
-});
-
 bot.on('photo', async (ctx) => {
-  const t0 = Date.now();
+  const startTime = Date.now();
   try {
     await ctx.replyWithChatAction('typing');
 
@@ -336,15 +277,13 @@ bot.on('photo', async (ctx) => {
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-    
-    console.log(`[Timer] Telegram file info fetched in: ${Date.now() - t0}ms`);
 
+    // 1. Fast image fetch (1.5s max timeout)
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
-    
-    console.log(`[Timer] Image buffer downloaded in: ${Date.now() - t0}ms`);
 
-    const aiResponse = await ai.models.generateContent({
+    // 2. Wrap Gemini call in a 5-second strict timeout race
+    const geminiCall = ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
         { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
@@ -352,16 +291,21 @@ bot.on('photo', async (ctx) => {
       ]
     });
 
-    console.log(`[Timer] Gemini response received in: ${Date.now() - t0}ms`);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 5000)
+    );
+
+    // Race Gemini against our 5s timer
+    const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
 
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.reply('⚠️ Could not identify this movie. Try a clearer screenshot.');
+      return ctx.reply('⚠️ Could not identify this movie. Try sending a clearer screenshot or movie poster.');
     }
 
     const queryEncoded = encodeURIComponent(identifiedTitle);
-    const elapsedTime = ((Date.now() - t0) / 1000).toFixed(1);
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
     const actionButtons = Markup.inlineKeyboard([
       [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
@@ -374,8 +318,13 @@ bot.on('photo', async (ctx) => {
     );
 
   } catch (error) {
+    if (error.message === 'GEMINI_TIMEOUT') {
+      console.warn('⚠️ Gemini AI request exceeded 5 seconds and was canceled.');
+      return ctx.reply('⚠️ AI vision took too long to analyze this photo. Please type the movie title directly for instant search!');
+    }
+
     console.error('Visual search speed error:', error.message || error);
-    ctx.reply('⚠️ Image processing timed out. Please try sending it again.');
+    ctx.reply('⚠️ Request failed or timed out. Please try sending the photo again.');
   }
 });
 module.exports = bot;
