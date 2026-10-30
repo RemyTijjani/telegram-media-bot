@@ -314,88 +314,66 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ LIGHTNING-FAST AI VISUAL MOVIE SEARCH
+// ⚡ ULTRA-FAST GEMINI-DIRECT PHOTO HANDLER
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
+    // 1. Send instant typing status
     await ctx.replyWithChatAction('typing');
 
+    // 2. Fetch the fast thumbnail
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 2000 });
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    const aiPromise = ai.models.generateContent({
+    // 3. Ask Gemini to identify title + year directly
+    const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
         {
           inlineData: { mimeType: 'image/jpeg', data: imageBase64 }
         },
-        'Identify movie/TV show. Return ONLY JSON: {"query": "Movie Name"}. If unknown: {"query": null}'
+        'Identify the movie or TV show in this image. Return ONLY a raw string with the exact title and release year (e.g., "Inception (2010)"). If unknown, reply ONLY with "UNKNOWN".'
       ]
     });
 
-    const aiResponse = await aiPromise;
-    const aiOutput = aiResponse.text.trim().replace(/```json|```/g, '');
-    let result = { query: null };
+    const identifiedTitle = aiResponse.text.trim();
 
-    try {
-      result = JSON.parse(aiOutput);
-    } catch (e) {
-      result.query = aiOutput;
-    }
-
-    const searchQuery = result.query;
-
-    if (!searchQuery || searchQuery.toLowerCase() === 'null') {
+    if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
       return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
     }
 
-    const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
-    const tmdbRes = await axios.get(tmdbUrl, { timeout: 2000 });
-    const item = (tmdbRes.data.results || [])[0];
-
-    if (!item) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no matching record found on TMDB.`);
-    }
-
-    const title = item.title || item.name || 'Unknown Title';
-    const releaseDate = item.release_date || item.first_air_date || '';
-    const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-    const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
-
-    const queryEncoded = encodeURIComponent(title);
-    const directServer1 = await fetchDirectDownloadLink(title);
+    // 4. Encode title directly for search links
+    const queryEncoded = encodeURIComponent(identifiedTitle);
+    const directServer1 = await fetchDirectDownloadLink(identifiedTitle);
     const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
 
+    // 5. Create action buttons directly without waiting for TMDB
     const actionButtons = Markup.inlineKeyboard([
+      [Markup.button.callback(`🔍 Search Results for "${identifiedTitle}"`, `fastsearch_${queryEncoded}`)],
       [Markup.button.url('📥 Download Server 1', server1Url)],
       [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
-      [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
+      [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)]
     ]);
 
-    const caption = `🎬 *${title}*${year} | ${rating}\n\n📝 ${overview}`;
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
-    if (item.poster_path) {
-      await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
-        caption: `${caption}\n\n⚡ _Processed in ${elapsedTime}s_`,
+    await ctx.reply(
+      `🎬 *Identified:* ${identifiedTitle}\n\nClick **Proceed to Download** below or view search results.`,
+      {
         parse_mode: 'Markdown',
         ...actionButtons
-      });
-    } else {
-      await ctx.reply(`${caption}\n\n⚡ _Processed in ${elapsedTime}s_`, { parse_mode: 'Markdown', ...actionButtons });
-    }
+      }
+    );
 
   } catch (error) {
     console.error('Visual search speed error:', error.message);
-    ctx.reply('⚠️ Request timed out. Please try sending the image again.');
+    ctx.reply('⚠️ Request timed out. Please try sending the photo again.');
   }
 });
 
