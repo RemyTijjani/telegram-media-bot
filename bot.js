@@ -3,7 +3,8 @@ dotenv.config();
 
 const axios = require('axios');
 const { Telegraf, Markup } = require('telegraf');
-
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const { downloadMedia } = require('./services/socialDownloader');
 const { searchMovies, getMovieDetails, searchPerson, getPersonCredits } = require('./services/tmdb');
@@ -364,8 +365,7 @@ bot.command('latest', async (ctx) => {
   }
 });
 // ==========================================
-// ==========================================
-// 📸 AI VISUAL MOVIE & ACTOR SEARCH HANDLER (DIRECT API)
+// 📸 AI VISUAL MOVIE SEARCH HANDLER (OFFICIAL SDK)
 // ==========================================
 bot.on('photo', async (ctx) => {
   try {
@@ -379,36 +379,31 @@ bot.on('photo', async (ctx) => {
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
-    const base64Image = Buffer.from(imageResponse.data).toString('base64');
+    const imageBuffer = Buffer.from(imageResponse.data);
 
-    const promptText = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
+    const prompt = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
 
-    // Direct REST call to Gemini API (works with any valid Google API key)
-    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-    
-    const geminiRes = await axios.post(geminiEndpoint, {
+    // Official SDK call handles AQ. auth tokens automatically
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
       contents: [
+        prompt,
         {
-          parts: [
-            { text: promptText },
-            {
-              inline_data: {
-                mime_type: 'image/jpeg',
-                data: base64Image
-              }
-            }
-          ]
+          inlineData: {
+            data: imageBuffer.toString('base64'),
+            mimeType: 'image/jpeg'
+          }
         }
       ]
     });
 
-    const aiOutputText = geminiRes.data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '');
+    const aiOutput = response.text.trim().replace(/```json|```/g, '');
     let result = { query: null };
 
     try {
-      result = JSON.parse(aiOutputText);
+      result = JSON.parse(aiOutput);
     } catch (e) {
-      result.query = aiOutputText;
+      result.query = response.text.trim();
     }
 
     const searchQuery = result.query;
@@ -454,7 +449,7 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('API Visual search error:', error.response?.data || error.message);
+    console.error('SDK Visual search error:', error);
     ctx.reply('⚠️ Failed to process the image. Please try again.');
   }
 });
