@@ -328,24 +328,21 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ ULTRA-FAST GEMINI-DIRECT PHOTO HANDLER
+// ⚡ LIGHTNING-FAST PHOTO HANDLER (NON-BLOCKING)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
-    // 1. Send instant typing status
     await ctx.replyWithChatAction('typing');
 
-    // 2. Fetch the fast thumbnail
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 2000 });
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    // 3. Ask Gemini to identify title + year directly
     const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -356,19 +353,18 @@ bot.on('photo', async (ctx) => {
       ]
     });
 
-    // Safely extract text from SDK response structure
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
       return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
     }
 
-    // 4. Encode title directly for search links
     const queryEncoded = encodeURIComponent(identifiedTitle);
-    const directServer1 = await fetchDirectDownloadLink(identifiedTitle);
-    const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
+    
+    // INSTANT FALLBACK: Do not wait for the scraper timeout to block the user! 
+    // Use the reliable search link immediately so response time stays under 2 seconds.
+    const server1Url = `https://9jarocks.net/latest?s=${queryEncoded}`;
 
-    // 5. Create action buttons directly without waiting for TMDB
     const actionButtons = Markup.inlineKeyboard([
       [Markup.button.callback(`🔍 Search Results for "${identifiedTitle}"`, `fastsearch_${queryEncoded}`)],
       [Markup.button.url('📥 Download Server 1', server1Url)],
@@ -391,5 +387,4 @@ bot.on('photo', async (ctx) => {
     ctx.reply('⚠️ Request timed out or failed. Please try sending the photo again.');
   }
 });
-
 module.exports = bot;
