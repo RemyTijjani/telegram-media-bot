@@ -327,34 +327,32 @@ bot.command('latest', async (ctx) => {
   }
 });
 
-// ==========================================
-// ⚡ INSTANT ONE-CLICK PHOTO HANDLER
-// ==========================================
 bot.on('photo', async (ctx) => {
-  const startTime = Date.now();
+  const t0 = Date.now();
   try {
-    // 1. Instant typing indicator
     await ctx.replyWithChatAction('typing');
 
-    // 2. Fetch the fast Telegram thumbnail
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+    
+    console.log(`[Timer] Telegram file info fetched in: ${Date.now() - t0}ms`);
 
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
+    
+    console.log(`[Timer] Image buffer downloaded in: ${Date.now() - t0}ms`);
 
-    // 3. Ask Gemini for name + year only
     const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
-        {
-          inlineData: { mimeType: 'image/jpeg', data: imageBase64 }
-        },
+        { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
         'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
       ]
     });
+
+    console.log(`[Timer] Gemini response received in: ${Date.now() - t0}ms`);
 
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
@@ -363,9 +361,8 @@ bot.on('photo', async (ctx) => {
     }
 
     const queryEncoded = encodeURIComponent(identifiedTitle);
-    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+    const elapsedTime = ((Date.now() - t0) / 1000).toFixed(1);
 
-    // 4. Send clean, instant text with a single "Proceed to Download" button
     const actionButtons = Markup.inlineKeyboard([
       [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
       [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
@@ -373,15 +370,12 @@ bot.on('photo', async (ctx) => {
 
     await ctx.reply(
       `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
-      {
-        parse_mode: 'Markdown',
-        ...actionButtons
-      }
+      { parse_mode: 'Markdown', ...actionButtons }
     );
 
   } catch (error) {
     console.error('Visual search speed error:', error.message || error);
-    ctx.reply('⚠️ Image processing took too long. Please try again.');
+    ctx.reply('⚠️ Image processing timed out. Please try sending it again.');
   }
 });
 module.exports = bot;
