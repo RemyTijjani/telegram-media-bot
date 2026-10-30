@@ -7,6 +7,8 @@ const { Telegraf, Markup } = require('telegraf');
 const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
+const { getMovieDetails } = require('./services/tmdb');
+
 // ==========================================
 // 🔥 WARM UP GEMINI API ON STARTUP
 // ==========================================
@@ -143,7 +145,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     const tmdbPage = Math.ceil((pageNum * itemsPerPage) / 20);
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${tmdbPage}`;
 
-    const { data } = await axios.get(tmdbUrl, { timeout: 3000 });
+    const { data } = await axios.get(tmdbUrl, { timeout: 4000 });
     const rawResults = data.results || [];
     const validResults = rawResults.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
 
@@ -178,7 +180,6 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     for (const item of pageItems) {
       try {
         const mediaType = item.media_type;
-        // Fixed: Added back proper await for getMovieDetails
         const details = await getMovieDetails(item.id, mediaType);
         if (!details) continue;
 
