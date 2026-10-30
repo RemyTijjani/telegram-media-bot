@@ -226,7 +226,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 💬 NON-BLOCKING SUBTITLE & QUOTE SEARCH
+// 💬 NON-BLOCKING SUBTITLE & QUOTE SEARCH (2-MIN WINDOW)
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
@@ -237,18 +237,22 @@ bot.command('quote', async (ctx) => {
     return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote In a land of myth`', { parse_mode: 'Markdown' });
   }
 
-  // Send an instant message placeholder
-  const processingMsg = await ctx.reply('⏳ Analyzing quote...');
+  const processingMsg = await ctx.reply('⏳ Analyzing quote (this may take a moment)...');
 
-  // Execute in background without blocking the bot's event loop
+  // Background execution with 2-minute safety timeout
   (async () => {
     try {
-      const aiResponse = await ai.models.generateContent({
+      const geminiCall = ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: `Identify the exact movie or TV show title and release year for this quote/subtitle: "${quoteText}". 
 Reply ONLY with the title and year (e.g., "Merlin (2008)"). If unsure, reply "UNKNOWN".`
       });
 
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000) // 2 Minutes
+      );
+
+      const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
       const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
       if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
@@ -280,11 +284,15 @@ Reply ONLY with the title and year (e.g., "Merlin (2008)"). If unsure, reply "UN
       );
     } catch (error) {
       console.error('Quote search execution error:', error);
+      const errorText = error.message === 'GEMINI_TIMEOUT' 
+        ? '⚠️ Request timed out after 2 minutes. Please try again.' 
+        : '⚠️ Request failed. Please try again.';
+
       await ctx.telegram.editMessageText(
         ctx.chat.id,
         processingMsg.message_id,
         null,
-        '⚠️ Request failed or timed out. Please try again.'
+        errorText
       ).catch(() => {});
     }
   })();
@@ -298,7 +306,6 @@ bot.on('text', async (ctx) => {
 
   const searchQuery = ctx.message.text.trim();
 
-  // Executed instantly even if an image or quote is currently being processed
   try {
     await ctx.replyWithChatAction('typing');
     await renderPageResults(ctx, searchQuery, 1, false);
@@ -343,13 +350,13 @@ bot.action(/^fastsearch_(.+)$/, async (ctx) => {
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// ⚡ NON-BLOCKING IMAGE RECOGNITION HANDLER
+// ⚡ NON-BLOCKING IMAGE RECOGNITION HANDLER (2-MIN WINDOW)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
-  const processingMsg = await ctx.reply('⏳ Analyzing screenshot...');
+  const processingMsg = await ctx.reply('⏳ Analyzing screenshot (this may take a moment)...');
 
-  // Asynchronous background execution allows incoming text searches to run immediately
+  // Background execution with 2-minute safety timeout
   (async () => {
     try {
       const photoArray = ctx.message.photo;
@@ -357,7 +364,7 @@ bot.on('photo', async (ctx) => {
       const file = await ctx.telegram.getFile(targetPhoto.file_id);
       const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-      const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 3000 });
+      const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
       const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
       const geminiCall = ai.models.generateContent({
@@ -369,7 +376,7 @@ bot.on('photo', async (ctx) => {
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 8000)
+        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000) // 2 Minutes
       );
 
       const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
@@ -407,7 +414,7 @@ bot.on('photo', async (ctx) => {
       console.error('Visual search error:', error.message || error);
       let errorText = '⚠️ Request failed or timed out. Please try text search instead.';
       if (error.message === 'GEMINI_TIMEOUT') {
-        errorText = '⚠️ AI vision took too long. Please type the title directly or use `/quote`!';
+        errorText = '⚠️ AI vision took longer than 2 minutes. Please type the title directly!';
       }
       await ctx.telegram.editMessageText(
         ctx.chat.id,
