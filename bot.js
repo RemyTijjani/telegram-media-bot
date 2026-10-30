@@ -7,8 +7,21 @@ const { Telegraf, Markup } = require('telegraf');
 const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-const { downloadMedia } = require('./services/socialDownloader');
-const { searchMovies, getMovieDetails, searchPerson, getPersonCredits } = require('./services/tmdb');
+// ==========================================
+// 🔥 WARM UP GEMINI API ON STARTUP
+// ==========================================
+async function warmUpGemini() {
+  try {
+    await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: 'warmup'
+    });
+    console.log("🔥 Gemini API connection warmed up successfully!");
+  } catch (err) {
+    console.log("Warmup notice:", err.message);
+  }
+}
+warmUpGemini();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
@@ -165,7 +178,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     for (const item of pageItems) {
       try {
         const mediaType = item.media_type;
-        const details = await getMovieDetails(item.id, mediaType);
+        const details = await searchMovies ? require('./services/tmdb').getMovieDetails(item.id, mediaType) : null;
         if (!details) continue;
 
         const title = details.title || details.name || 'Unknown Title';
@@ -222,23 +235,21 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 💬 STABLE QUOTE SEARCH (NO RACE TIMER TO PREVENT UNNECESSARY TIMEOUTS)
+// 💬 INSTANT-FEEDBACK QUOTE SEARCH
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
   const textPayload = ctx.message.text || '';
   const quoteText = textPayload.replace(/^\/[a-zA-Z0-9_]+\s*/i, '').trim();
 
-  console.log(`[Quote Command Received]: "${quoteText}"`);
-
   if (!quoteText) {
     return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote Just keep swimming`', { parse_mode: 'Markdown' });
   }
 
-  try {
-    await ctx.replyWithChatAction('typing');
+  // Reply instantly so the user sees immediate activity while AI processes
+  const processingMsg = await ctx.reply('⏳ Analyzing quote...');
 
-    // Direct Gemini call without a race timer so it safely waits for completion
+  try {
     const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: `You are an expert movie subtitle and dialogue identifier. 
@@ -252,10 +263,14 @@ RULES:
     });
 
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
-    console.log(`[Quote AI Result]: ${identifiedTitle}`);
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.reply('⚠️ Could not identify any movie from that subtitle line. Try adding more words!');
+      return ctx.telegram.editMessageText(
+        ctx.chat.id,
+        processingMsg.message_id,
+        null,
+        '⚠️ Could not identify any movie from that subtitle line. Try adding more words!'
+      );
     }
 
     const queryEncoded = encodeURIComponent(identifiedTitle);
@@ -266,8 +281,12 @@ RULES:
       [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
     ]);
 
-    await ctx.reply(
-      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view full details:`,
+    // Smoothly update the loading message with the final result
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      processingMsg.message_id,
+      null,
+      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
       {
         parse_mode: 'Markdown',
         ...actionButtons
@@ -276,7 +295,12 @@ RULES:
 
   } catch (error) {
     console.error('Quote search execution error:', error);
-    ctx.reply('⚠️ Request failed. Please check your API key or try again.');
+    await ctx.telegram.editMessageText(
+      ctx.chat.id,
+      processingMsg.message_id,
+      null,
+      '⚠️ Request failed or timed out. Please try again.'
+    );
   }
 });
 
