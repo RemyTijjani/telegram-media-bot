@@ -54,7 +54,8 @@ async function setupBotProfile() {
     await bot.telegram.setMyCommands([
       { command: 'start', description: '🚀 Start the bot & view main menu' },
       { command: 'help', description: '❓ Get help and usage instructions' },
-      { command: 'latest', description: '🔥 View trending movies & series' }
+      { command: 'latest', description: '🔥 View trending movies & series' },
+      { command: 'quote', description: '💬 Identify movie from subtitle or quote' }
     ]);
 
     await bot.telegram.setMyDescription(
@@ -77,7 +78,8 @@ const startMessage = [
   '🎬 Welcome to ReelGrab.',
   '',
   'Type a movie or TV title for a cinematic info card.',
-  'Send a movie poster or screenshot for AI visual identification and download links!',
+  'Send a movie poster or screenshot for AI visual identification.',
+  'Use `/quote [line of text]` to find a movie from a subtitle instantly!',
   '',
   'Please only download and share content you have permission to use.'
 ].join('\n');
@@ -232,6 +234,61 @@ bot.on('text', async (ctx) => {
 });
 
 // ==========================================
+// 💬 LIGHTNING-FAST QUOTE & SUBTITLE SEARCH
+// ==========================================
+bot.command('quote', async (ctx) => {
+  const startTime = Date.now();
+  const quoteText = ctx.message.text.replace('/quote', '').trim();
+
+  if (!quoteText) {
+    return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote I am iron man`', { parse_mode: 'Markdown' });
+  }
+
+  try {
+    await ctx.replyWithChatAction('typing');
+
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: `Identify the movie or TV show for this quote or subtitle line: "${quoteText}". Return ONLY JSON in this format: {"title": "Movie Name (Year)"}. If unknown, return {"title": null}.`
+    });
+
+    const rawText = aiResponse.text ? aiResponse.text.trim().replace(/```json|```/g, '') : '';
+    let result = { title: null };
+
+    try {
+      result = JSON.parse(rawText);
+    } catch (e) {
+      result.title = rawText;
+    }
+
+    if (!result.title || result.title.toLowerCase().includes('null')) {
+      return ctx.reply('⚠️ Could not identify any movie from that subtitle line. Try adding more words!');
+    }
+
+    const identifiedTitle = result.title;
+    const queryEncoded = encodeURIComponent(identifiedTitle);
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    const actionButtons = Markup.inlineKeyboard([
+      [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
+    ]);
+
+    await ctx.reply(
+      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view search results.`,
+      {
+        parse_mode: 'Markdown',
+        ...actionButtons
+      }
+    );
+
+  } catch (error) {
+    console.error('Quote search error:', error);
+    ctx.reply('⚠️ Quote processing failed. Please try again.');
+  }
+});
+
+// ==========================================
 // 🔄 HANDLE PAGINATION CLICK
 // ==========================================
 bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
@@ -249,7 +306,7 @@ bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
 });
 
 // ==========================================
-// 🔄 HANDLE INSTANT PHOTO SEARCH CALLBACK
+// 🔄 HANDLE INSTANT PHOTO / QUOTE SEARCH CALLBACK
 // ==========================================
 bot.action(/^fastsearch_(.+)$/, async (ctx) => {
   const searchQuery = decodeURIComponent(ctx.match[1]);
@@ -320,11 +377,12 @@ bot.on('photo', async (ctx) => {
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
       console.warn('⚠️ Gemini AI request exceeded 5 seconds and was canceled.');
-      return ctx.reply('⚠️ AI vision took too long to analyze this photo. Please type the movie title directly for instant search!');
+      return ctx.reply('⚠️ AI vision took too long to analyze this photo. Please type the movie title directly or use `/quote` for instant search!');
     }
 
     console.error('Visual search speed error:', error.message || error);
     ctx.reply('⚠️ Request failed or timed out. Please try sending the photo again.');
   }
 });
+
 module.exports = bot;
