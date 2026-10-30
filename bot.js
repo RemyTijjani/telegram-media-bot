@@ -115,7 +115,6 @@ async function fetchDirectDownloadLink(movieTitle) {
 
     return directLink;
   } catch (error) {
-    // Silently return null without spamming error logs, falling back to search automatically
     return null;
   }
 }
@@ -249,6 +248,21 @@ bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
   }
 });
 
+// ==========================================
+// 🔄 HANDLE INSTANT PHOTO SEARCH CALLBACK
+// ==========================================
+bot.action(/^fastsearch_(.+)$/, async (ctx) => {
+  const searchQuery = decodeURIComponent(ctx.match[1]);
+  try {
+    await ctx.answerCbQuery(`Fetching details for ${searchQuery}...`);
+    await ctx.replyWithChatAction('typing');
+    await renderPageResults(ctx, searchQuery, 1, true);
+  } catch (error) {
+    console.error('Fastsearch callback error:', error);
+    await ctx.answerCbQuery('⚠️ Failed to load details.');
+  }
+});
+
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
@@ -328,7 +342,7 @@ bot.on('photo', async (ctx) => {
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 2000 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
     // 3. Ask Gemini to identify title + year directly
@@ -342,7 +356,8 @@ bot.on('photo', async (ctx) => {
       ]
     });
 
-    const identifiedTitle = aiResponse.text.trim();
+    // Safely extract text from SDK response structure
+    const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
       return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
@@ -364,7 +379,7 @@ bot.on('photo', async (ctx) => {
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
     await ctx.reply(
-      `🎬 *Identified:* ${identifiedTitle}\n\nClick **Proceed to Download** below or view search results.`,
+      `🎬 *Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view full results.`,
       {
         parse_mode: 'Markdown',
         ...actionButtons
@@ -372,8 +387,8 @@ bot.on('photo', async (ctx) => {
     );
 
   } catch (error) {
-    console.error('Visual search speed error:', error.message);
-    ctx.reply('⚠️ Request timed out. Please try sending the photo again.');
+    console.error('Visual search speed error:', error.message || error);
+    ctx.reply('⚠️ Request timed out or failed. Please try sending the photo again.');
   }
 });
 
