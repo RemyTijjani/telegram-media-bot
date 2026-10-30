@@ -86,23 +86,20 @@ bot.start((ctx) => ctx.reply(startMessage));
 bot.command('help', (ctx) => ctx.reply(startMessage));
 
 // ==========================================
-// 🔍 AUTOMATED DIRECT FILE LINK SCRAPER
+// 🔍 CLEAN DIRECT FILE LINK HELPER (SILENT FALLBACK)
 // ==========================================
 async function fetchDirectDownloadLink(movieTitle) {
   try {
     const searchApiUrl = `https://9jarocks.net/wp-json/wp/v2/posts?search=${encodeURIComponent(movieTitle)}`;
     
     const { data: posts } = await axios.get(searchApiUrl, {
-      timeout: 3000,
+      timeout: 2000,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
 
-    if (!posts || posts.length === 0) {
-      return null;
-    }
+    if (!posts || posts.length === 0) return null;
 
     const postHtml = posts[0].content.rendered;
     const $ = cheerio.load(postHtml);
@@ -112,13 +109,13 @@ async function fetchDirectDownloadLink(movieTitle) {
       const href = $(el).attr('href');
       if (href && href.includes('loadedfiles.net/')) {
         directLink = href;
-        return false; // Break loop once found
+        return false;
       }
     });
 
     return directLink;
   } catch (error) {
-    console.error('Auto-extraction error:', error.message);
+    // Silently return null without spamming error logs, falling back to search automatically
     return null;
   }
 }
