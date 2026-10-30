@@ -91,7 +91,14 @@ bot.command('help', (ctx) => ctx.reply(startMessage));
 async function fetchDirectDownloadLink(movieTitle) {
   try {
     const searchApiUrl = `https://9jarocks.net/wp-json/wp/v2/posts?search=${encodeURIComponent(movieTitle)}`;
-    const { data: posts } = await axios.get(searchApiUrl, { timeout: 2000 });
+    
+    const { data: posts } = await axios.get(searchApiUrl, {
+      timeout: 3000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*'
+      }
+    });
 
     if (!posts || posts.length === 0) {
       return null;
