@@ -178,7 +178,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     for (const item of pageItems) {
       try {
         const mediaType = item.media_type;
-        const details = await searchMovies ? require('./services/tmdb').getMovieDetails(item.id, mediaType) : null;
+        // Fixed: Added back proper await for getMovieDetails
+        const details = await getMovieDetails(item.id, mediaType);
         if (!details) continue;
 
         const title = details.title || details.name || 'Unknown Title';
@@ -246,7 +247,6 @@ bot.command('quote', async (ctx) => {
     return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote Just keep swimming`', { parse_mode: 'Markdown' });
   }
 
-  // Reply instantly so the user sees immediate activity while AI processes
   const processingMsg = await ctx.reply('⏳ Analyzing quote...');
 
   try {
@@ -281,7 +281,6 @@ RULES:
       [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
     ]);
 
-    // Smoothly update the loading message with the final result
     await ctx.telegram.editMessageText(
       ctx.chat.id,
       processingMsg.message_id,
