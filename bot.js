@@ -271,25 +271,24 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ LIGHTNING FAST 🚀 AI VISUAL MOVIE SEARCH
+// ⚡ LIGHTNING-FAST AI VISUAL MOVIE SEARCH
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
-    // 1. Instantly grab the smallest thumbnail payload from Telegram (index 0)
+    // Grab the smallest compressed thumbnail from Telegram for instant downloading
     const photoArray = ctx.message.photo;
-    const fileId = photoArray[0].file_id;
-    
-    const file = await ctx.telegram.getFile(fileId);
+    const targetPhoto = photoArray[0]; 
+    const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // 2. Fetch the tiny image buffer with a tight 3s timeout so it never hangs
+    // Fast buffer download with a strict 3-second timeout
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 3000 });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    const prompt = 'Identify the movie or TV series. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
+    const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
-    // 3. Fast call to Gemini 3.8 Flash
+    // Fast AI analysis using Gemini 3.8 Flash
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -318,20 +317,20 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
-    // 4. Single TMDB lookup for top match (omits slow looping fetches)
+    // Direct TMDB search query lookup
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl, { timeout: 3000 });
-    const item = (tmdbRes.data.results || []).find(r => r.media_type === 'movie' || r.media_type === 'tv');
+    const item = (tmdbRes.data.results || [])[0];
 
     if (!item) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no records found.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no records were found.`);
     }
 
     const title = item.title || item.name || 'Unknown Title';
     const releaseDate = item.release_date || item.first_air_date || '';
     const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
     const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-    const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
+    const overview = item.overview ? item.overview.slice(0, 130) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
 
@@ -355,8 +354,8 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('Visual search speed error:', error);
-    ctx.reply('⚠️ Request took too long or failed. Please try again.');
+    console.error('Visual search error:', error);
+    ctx.reply('⚠️ Failed to process the image quickly. Please try sending it again.');
   }
 });
 module.exports = bot;
