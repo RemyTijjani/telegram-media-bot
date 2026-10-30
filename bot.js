@@ -88,7 +88,7 @@ bot.start((ctx) => ctx.reply(startMessage));
 bot.command('help', (ctx) => ctx.reply(startMessage));
 
 // ==========================================
-// 🔍 CLEAN DIRECT FILE LINK HELPER (SILENT FALLBACK)
+// 🔍 CLEAN DIRECT FILE LINK HELPER (SAFE)
 // ==========================================
 async function fetchDirectDownloadLink(movieTitle) {
   try {
@@ -117,6 +117,7 @@ async function fetchDirectDownloadLink(movieTitle) {
 
     return directLink;
   } catch (error) {
+    // Safely catch ETIMEDOUT or network blocks without crashing Render
     return null;
   }
 }
@@ -125,95 +126,100 @@ async function fetchDirectDownloadLink(movieTitle) {
 // 🍿 HELPER FUNCTION TO RENDER PAGINATED RESULTS
 // ==========================================
 async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = false) {
-  const itemsPerPage = 5;
-  const tmdbPage = Math.ceil((pageNum * itemsPerPage) / 20);
-  const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${tmdbPage}`;
+  try {
+    const itemsPerPage = 5;
+    const tmdbPage = Math.ceil((pageNum * itemsPerPage) / 20);
+    const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${tmdbPage}`;
 
-  const { data } = await axios.get(tmdbUrl);
-  const rawResults = data.results || [];
-  const validResults = rawResults.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
+    const { data } = await axios.get(tmdbUrl, { timeout: 3000 });
+    const rawResults = data.results || [];
+    const validResults = rawResults.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
 
-  const totalResults = data.total_results || validResults.length;
-  const totalPages = Math.ceil(totalResults / itemsPerPage) || 1;
+    const totalResults = data.total_results || validResults.length;
+    const totalPages = Math.ceil(totalResults / itemsPerPage) || 1;
 
-  if (validResults.length === 0) {
-    if (isCallback) await ctx.answerCbQuery('No more results found.');
-    else {
-      const encodedQuery = encodeURIComponent(searchQuery);
-      const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${encodedQuery}`)],
-        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${encodedQuery}`)]
-      ]);
+    if (validResults.length === 0) {
+      if (isCallback) await ctx.answerCbQuery('No more results found.');
+      else {
+        const encodedQuery = encodeURIComponent(searchQuery);
+        const fallbackButtons = Markup.inlineKeyboard([
+          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${encodedQuery}`)],
+          [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${encodedQuery}`)]
+        ]);
 
-      await ctx.reply(
-        `🎬 *Search Results for "${searchQuery}":*\n\n*Overview:*\nRequested title processed via download servers. Click below to download or search your title on the platforms.`,
-        { parse_mode: 'Markdown', ...fallbackButtons }
-      );
-    }
-    return;
-  }
-
-  const indexOnTmdbPage = ((pageNum - 1) % 4) * itemsPerPage;
-  const pageItems = validResults.slice(indexOnTmdbPage, indexOnTmdbPage + itemsPerPage);
-
-  await ctx.reply(`🔎 *Found ${totalResults} result(s) for "${searchQuery}" (Page ${pageNum} of ${totalPages}):*`, {
-    parse_mode: 'Markdown'
-  });
-
-  for (const item of pageItems) {
-    try {
-      const mediaType = item.media_type;
-      const details = await getMovieDetails(item.id, mediaType);
-      if (!details) continue;
-
-      const title = details.title || details.name || 'Unknown Title';
-      const releaseDate = details.release_date || details.first_air_date || '';
-      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-      const rating = details.vote_average ? `⭐ ${details.vote_average.toFixed(1)}/10` : '⭐ N/A';
-      const overview = details.overview ? details.overview.slice(0, 250) + '...' : 'No description available.';
-
-      const queryEncoded = encodeURIComponent(title);
-      const directServer1 = await fetchDirectDownloadLink(title);
-      const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
-
-      const buttonRows = [
-        [Markup.button.url('📥 Download Server 1', server1Url)],
-        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
-        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
-        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
-      ];
-
-      const actionButtons = Markup.inlineKeyboard(buttonRows);
-      const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
-
-      if (details.poster_path) {
-        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${details.poster_path}`, {
-          caption: caption,
-          parse_mode: 'Markdown',
-          ...actionButtons
-        });
-      } else {
-        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+        await ctx.reply(
+          `🎬 *Search Results for "${searchQuery}":*\n\n*Overview:*\nRequested title processed via download servers. Click below to download or search your title on the platforms.`,
+          { parse_mode: 'Markdown', ...fallbackButtons }
+        );
       }
-    } catch (err) {
-      console.error(`Error loading item ID ${item.id}:`, err);
+      return;
     }
-  }
 
-  const navButtons = [];
-  if (pageNum > 1) {
-    navButtons.push(Markup.button.callback('◀️ Previous', `page_${pageNum - 1}_${encodeURIComponent(searchQuery)}`));
-  }
-  navButtons.push(Markup.button.callback(`📄 Page ${pageNum}/${totalPages}`, 'noop'));
-  if (pageNum < totalPages) {
-    navButtons.push(Markup.button.callback('Next ▶️', `page_${pageNum + 1}_${encodeURIComponent(searchQuery)}`));
-  }
+    const indexOnTmdbPage = ((pageNum - 1) % 4) * itemsPerPage;
+    const pageItems = validResults.slice(indexOnTmdbPage, indexOnTmdbPage + itemsPerPage);
 
-  await ctx.reply(`Navigation for *"${searchQuery}"*:`, {
-    parse_mode: 'Markdown',
-    ...Markup.inlineKeyboard([navButtons])
-  });
+    await ctx.reply(`🔎 *Found ${totalResults} result(s) for "${searchQuery}" (Page ${pageNum} of ${totalPages}):*`, {
+      parse_mode: 'Markdown'
+    });
+
+    for (const item of pageItems) {
+      try {
+        const mediaType = item.media_type;
+        const details = await getMovieDetails(item.id, mediaType);
+        if (!details) continue;
+
+        const title = details.title || details.name || 'Unknown Title';
+        const releaseDate = details.release_date || details.first_air_date || '';
+        const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+        const rating = details.vote_average ? `⭐ ${details.vote_average.toFixed(1)}/10` : '⭐ N/A';
+        const overview = details.overview ? details.overview.slice(0, 250) + '...' : 'No description available.';
+
+        const queryEncoded = encodeURIComponent(title);
+        const directServer1 = await fetchDirectDownloadLink(title);
+        const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
+
+        const buttonRows = [
+          [Markup.button.url('📥 Download Server 1', server1Url)],
+          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
+        ];
+
+        const actionButtons = Markup.inlineKeyboard(buttonRows);
+        const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
+
+        if (details.poster_path) {
+          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${details.poster_path}`, {
+            caption: caption,
+            parse_mode: 'Markdown',
+            ...actionButtons
+          });
+        } else {
+          await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+        }
+      } catch (err) {
+        console.error(`Error loading item ID ${item.id}:`, err);
+      }
+    }
+
+    const navButtons = [];
+    if (pageNum > 1) {
+      navButtons.push(Markup.button.callback('◀️ Previous', `page_${pageNum - 1}_${encodeURIComponent(searchQuery)}`));
+    }
+    navButtons.push(Markup.button.callback(`📄 Page ${pageNum}/${totalPages}`, 'noop'));
+    if (pageNum < totalPages) {
+      navButtons.push(Markup.button.callback('Next ▶️', `page_${pageNum + 1}_${encodeURIComponent(searchQuery)}`));
+    }
+
+    await ctx.reply(`Navigation for *"${searchQuery}"*:`, {
+      parse_mode: 'Markdown',
+      ...Markup.inlineKeyboard([navButtons])
+    });
+  } catch (error) {
+    console.error('Render page results error:', error);
+    if (!isCallback) ctx.reply('⚠️ Search request timed out. Please try again.');
+  }
 }
 
 // ==========================================
@@ -247,25 +253,22 @@ bot.command('quote', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    const aiResponse = await ai.models.generateContent({
+    const geminiCall = ai.models.generateContent({
       model: 'gemini-3.8-flash',
-      contents: `Identify the movie or TV show for this quote or subtitle line: "${quoteText}". Return ONLY JSON in this format: {"title": "Movie Name (Year)"}. If unknown, return {"title": null}.`
+      contents: `Identify the movie or TV show for this quote or subtitle line: "${quoteText}". Return ONLY the title and year (e.g., "Avengers: Endgame (2019)"). If unknown, reply "UNKNOWN".`
     });
 
-    const rawText = aiResponse.text ? aiResponse.text.trim().replace(/```json|```/g, '') : '';
-    let result = { title: null };
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 5000)
+    );
 
-    try {
-      result = JSON.parse(rawText);
-    } catch (e) {
-      result.title = rawText;
-    }
+    const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
+    const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
-    if (!result.title || result.title.toLowerCase().includes('null')) {
+    if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
       return ctx.reply('⚠️ Could not identify any movie from that subtitle line. Try adding more words!');
     }
 
-    const identifiedTitle = result.title;
     const queryEncoded = encodeURIComponent(identifiedTitle);
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
@@ -283,6 +286,9 @@ bot.command('quote', async (ctx) => {
     );
 
   } catch (error) {
+    if (error.message === 'GEMINI_TIMEOUT') {
+      return ctx.reply('⚠️ Quote search took too long. Please try again!');
+    }
     console.error('Quote search error:', error);
     ctx.reply('⚠️ Quote processing failed. Please try again.');
   }
@@ -335,11 +341,9 @@ bot.on('photo', async (ctx) => {
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // 1. Fast image fetch (1.5s max timeout)
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    // 2. Wrap Gemini call in a 5-second strict timeout race
     const geminiCall = ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -352,13 +356,11 @@ bot.on('photo', async (ctx) => {
       setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 5000)
     );
 
-    // Race Gemini against our 5s timer
     const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
-
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.reply('⚠️ Could not identify this movie. Try sending a clearer screenshot or movie poster.');
+      return ctx.reply('⚠️ Could not identify this movie. Try sending a clearer screenshot or use text search.');
     }
 
     const queryEncoded = encodeURIComponent(identifiedTitle);
@@ -377,11 +379,11 @@ bot.on('photo', async (ctx) => {
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
       console.warn('⚠️ Gemini AI request exceeded 5 seconds and was canceled.');
-      return ctx.reply('⚠️ AI vision took too long to analyze this photo. Please type the movie title directly or use `/quote` for instant search!');
+      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant text search!');
     }
 
     console.error('Visual search speed error:', error.message || error);
-    ctx.reply('⚠️ Request failed or timed out. Please try sending the photo again.');
+    ctx.reply('⚠️ Request failed or timed out. Please try text search instead.');
   }
 });
 
