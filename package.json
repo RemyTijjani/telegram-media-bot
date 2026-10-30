@@ -12,6 +12,6 @@
     "axios": "^1.7.9",
     "dotenv": "^16.4.7",
     "telegraf": "^4.16.3",
-    "@google/genai": "^0.1.1"
+    "@google/genai": "latest"
   }
 }
