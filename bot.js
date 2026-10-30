@@ -328,13 +328,15 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ LIGHTNING-FAST PHOTO HANDLER (NON-BLOCKING)
+// ⚡ INSTANT ONE-CLICK PHOTO HANDLER
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
+    // 1. Instant typing indicator
     await ctx.replyWithChatAction('typing');
 
+    // 2. Fetch the fast Telegram thumbnail
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
@@ -343,39 +345,34 @@ bot.on('photo', async (ctx) => {
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
+    // 3. Ask Gemini for name + year only
     const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
         {
           inlineData: { mimeType: 'image/jpeg', data: imageBase64 }
         },
-        'Identify the movie or TV show in this image. Return ONLY a raw string with the exact title and release year (e.g., "Inception (2010)"). If unknown, reply ONLY with "UNKNOWN".'
+        'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
       ]
     });
 
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
+      return ctx.reply('⚠️ Could not identify this movie. Try a clearer screenshot.');
     }
 
     const queryEncoded = encodeURIComponent(identifiedTitle);
-    
-    // INSTANT FALLBACK: Do not wait for the scraper timeout to block the user! 
-    // Use the reliable search link immediately so response time stays under 2 seconds.
-    const server1Url = `https://9jarocks.net/latest?s=${queryEncoded}`;
-
-    const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.callback(`🔍 Search Results for "${identifiedTitle}"`, `fastsearch_${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 1', server1Url)],
-      [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)]
-    ]);
-
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
+    // 4. Send clean, instant text with a single "Proceed to Download" button
+    const actionButtons = Markup.inlineKeyboard([
+      [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
+    ]);
+
     await ctx.reply(
-      `🎬 *Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view full results.`,
+      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
       {
         parse_mode: 'Markdown',
         ...actionButtons
@@ -384,7 +381,7 @@ bot.on('photo', async (ctx) => {
 
   } catch (error) {
     console.error('Visual search speed error:', error.message || error);
-    ctx.reply('⚠️ Request timed out or failed. Please try sending the photo again.');
+    ctx.reply('⚠️ Image processing took too long. Please try again.');
   }
 });
 module.exports = bot;
