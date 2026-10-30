@@ -291,7 +291,7 @@ bot.on('photo', async (ctx) => {
 
     // Using stable gemini-2.0-flash model
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash',
+      model: 'gemini-3.8-flash',
       contents: [
         prompt,
         {
