@@ -271,32 +271,36 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ ULTRA-FAST AI VISUAL MOVIE SEARCH (DIRECT LINK PASSING)
+// ⚡ FAST & WORKING AI VISUAL MOVIE SEARCH
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
     await ctx.replyWithChatAction('typing');
 
-    // Pick the smallest image thumbnail for lightning-fast AI analysis
+    // 1. Get compressed thumbnail for fast processing
     const photoArray = ctx.message.photo;
-    const targetPhoto = photoArray[0]; // Index 0 is the smallest compressed resolution
+    const targetPhoto = photoArray[0]; // Smallest resolution (fastest payload)
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
+    // 2. Download image buffer
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
+    const imageBuffer = Buffer.from(imageResponse.data);
+
     const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
-    // Send photoUrl directly to Gemini — avoids downloading the buffer locally!
+    // 3. Pass Base64 data correctly to Gemini
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
-        prompt,
         {
-          fileData: {
-            fileUri: photoUrl,
-            mimeType: 'image/jpeg'
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageBuffer.toString('base64')
           }
-        }
+        },
+        prompt
       ]
     });
 
@@ -315,13 +319,13 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
-    // Direct TMDB multi-search lookup
+    // 4. Query TMDB for movie card details
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl);
     const item = (tmdbRes.data.results || [])[0];
 
     if (!item) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find records.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find records on TMDB.`);
     }
 
     const title = item.title || item.name || 'Unknown Title';
@@ -352,8 +356,8 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('Speed optimization error:', error);
-    ctx.reply('⚠️ Failed to process the image quickly. Please try again.');
+    console.error('Visual search handler error:', error);
+    ctx.reply('⚠️ Failed to process the image. Please try sending it again.');
   }
 });
 module.exports = bot;
