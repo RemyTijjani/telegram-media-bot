@@ -271,7 +271,7 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ BLAZING FAST 🚀 AI VISUAL MOVIE SEARCH
+// ⚡ BLAZING FAST 🚀 AI VISUAL MOVIE SEARCH (WITH DUAL DOWNLOADERS)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
@@ -279,20 +279,17 @@ bot.on('photo', async (ctx) => {
     await ctx.replyWithChatAction('typing');
 
     const photoArray = ctx.message.photo;
-    // Pick a medium-sized file index (e.g., second to last, or index 1) for rapid downloading
     const targetPhoto = photoArray.length > 1 ? photoArray[photoArray.length - 2] : photoArray[0];
     const fileId = targetPhoto.file_id;
     
     const file = await ctx.telegram.getFile(fileId);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // Fetch image buffer and query TMDB in parallel or sequence with minimal overhead
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
     const imageBuffer = Buffer.from(imageResponse.data);
 
     const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
-    // Call Gemini 3.8 Flash
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -321,7 +318,6 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
-    // Fetch TMDB data
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl);
     const item = (tmdbRes.data.results || [])[0];
@@ -337,13 +333,15 @@ bot.on('photo', async (ctx) => {
     const overview = item.overview ? item.overview.slice(0, 150) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
+    
+    // Dual download servers + stream option
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download (Server 1)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download (Server 2)', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
 
     const caption = `🎬 *${title}*${year} | ${rating}\n\n📝 ${overview}`;
-
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
 
     if (item.poster_path) {
