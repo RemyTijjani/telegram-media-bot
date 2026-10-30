@@ -117,7 +117,6 @@ async function fetchDirectDownloadLink(movieTitle) {
 
     return directLink;
   } catch (error) {
-    // Safely catch ETIMEDOUT or network blocks without crashing Render
     return null;
   }
 }
@@ -223,7 +222,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 💬 LIGHTNING-FAST QUOTE & SUBTITLE SEARCH (PLACED BEFORE TEXT HANDLER)
+// 💬 STABLE QUOTE SEARCH (NO RACE TIMER TO PREVENT UNNECESSARY TIMEOUTS)
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
@@ -239,7 +238,8 @@ bot.command('quote', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    const geminiCall = ai.models.generateContent({
+    // Direct Gemini call without a race timer so it safely waits for completion
+    const aiResponse = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: `You are an expert movie subtitle and dialogue identifier. 
 Analyze this quote or subtitle line: "${quoteText}".
@@ -251,14 +251,7 @@ RULES:
 - Do NOT guess or return random titles.`
     });
 
-    // 10-second timeout window for stable cloud processing
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 10000)
-    );
-
-    const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
-
     console.log(`[Quote AI Result]: ${identifiedTitle}`);
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
@@ -282,12 +275,8 @@ RULES:
     );
 
   } catch (error) {
-    if (error.message === 'GEMINI_TIMEOUT') {
-      console.warn('⚠️ Quote search took longer than 10 seconds.');
-      return ctx.reply('⚠️ Request took too long. Please try again!');
-    }
-    console.error('Quote search error:', error);
-    ctx.reply('⚠️ Request failed. Please try a different quote.');
+    console.error('Quote search execution error:', error);
+    ctx.reply('⚠️ Request failed. Please check your API key or try again.');
   }
 });
 
@@ -343,7 +332,7 @@ bot.action(/^fastsearch_(.+)$/, async (ctx) => {
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// ⚡ ULTRA-FAST SAFE PHOTO HANDLER (WITH 5s SAFETY TIMEOUT)
+// ⚡ PHOTO HANDLER (WITH 5s SAFETY TIMEOUT)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
@@ -392,8 +381,7 @@ bot.on('photo', async (ctx) => {
 
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
-      console.warn('⚠️ Gemini AI request exceeded 5 seconds and was canceled.');
-      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant search!');
+      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant text search!');
     }
 
     console.error('Visual search speed error:', error.message || error);
