@@ -104,8 +104,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     else {
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${encodedQuery}`)],
-        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${encodedQuery}`)],
         [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
@@ -138,10 +138,10 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 
       const queryEncoded = encodeURIComponent(title);
 
-      // Direct Server File Host Links + Streaming
+      // Functional Search Post Links for Servers 1 & 2
       const buttonRows = [
-        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
-        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
         [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
         [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
       ];
@@ -247,8 +247,8 @@ bot.command('latest', async (ctx) => {
         const queryEncoded = encodeURIComponent(title);
 
         const actionButtons = Markup.inlineKeyboard([
-          [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
-          [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
           [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
           [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType}/${item.id}`)]
         ]);
@@ -327,15 +327,15 @@ bot.on('photo', async (ctx) => {
     const title = item.title || item.name || 'Unknown Title';
     const releaseDate = item.release_date || item.first_air_date || '';
     const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
+    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/App';
     const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
 
-    // Direct File Host Target Links
+    // Functional Post Link Targets for Servers 1 & 2
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
       [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
