@@ -228,7 +228,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
   const textPayload = ctx.message.text || '';
-  const quoteText = textPayload.replace(/^\/quote\s*/i, '').trim();
+  const quoteText = textPayload.replace(/^\/[a-zA-Z0-9_]+\s*/i, '').trim();
 
   console.log(`[Quote Command Received]: "${quoteText}"`);
 
@@ -251,8 +251,9 @@ RULES:
 - Do NOT guess or return random titles.`
     });
 
+    // 10-second timeout window for stable cloud processing
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 5000)
+      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 10000)
     );
 
     const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
@@ -282,7 +283,8 @@ RULES:
 
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
-      return ctx.reply('⚠️ Quote search timed out. Please try again!');
+      console.warn('⚠️ Quote search took longer than 10 seconds.');
+      return ctx.reply('⚠️ Request took too long. Please try again!');
     }
     console.error('Quote search error:', error);
     ctx.reply('⚠️ Request failed. Please try a different quote.');
@@ -391,7 +393,7 @@ bot.on('photo', async (ctx) => {
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
       console.warn('⚠️ Gemini AI request exceeded 5 seconds and was canceled.');
-      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant text search!');
+      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant search!');
     }
 
     console.error('Visual search speed error:', error.message || error);
