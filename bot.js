@@ -127,42 +127,6 @@ bot.start((ctx) => ctx.reply(startMessage));
 
 bot.command('help', (ctx) => ctx.reply(startMessage));
 
-bot.on('photo', async (ctx) => {
-  await ctx.reply('🔎 Looking at the photo and checking the film database…');
-  try {
-    const photo = ctx.message.photo[ctx.message.photo.length - 1];
-    const fileUrl = await ctx.telegram.getFileLink(photo.file_id);
-    const actorName = await identifyActor(fileUrl.toString());
-    if (!actorName) {
-      await ctx.reply('I could not recognize an actor in that image. Try a clearer, front-facing photo.');
-      return;
-    }
-
-    const person = await searchPerson(actorName);
-    if (!person) {
-      await ctx.reply(`I recognized ${actorName}, but could not find a matching film profile.`);
-      return;
-    }
-
-    const credits = await getPersonCredits(person.id);
-    const lines = credits.length
-      ? credits.map((credit) => {
-          const year = credit.release_date ? credit.release_date.slice(0, 4) : '—';
-          return `• ${credit.title}${year !== '—' ? ` (${year})` : ''}`;
-        })
-      : ['No movie credits were found.'];
-    const caption = [`🎭 ${person.name}`, '', ...lines].join('\n');
-    const profileUrl = person.profile_path ? `https://image.tmdb.org/t/p/w500${person.profile_path}` : null;
-    if (profileUrl) {
-      await ctx.replyWithPhoto(profileUrl, { caption });
-    } else {
-      await ctx.reply(caption);
-    }
-  } catch (error) {
-    console.error('Actor lookup failed:', error.message);
-    await ctx.reply('I could not complete the actor lookup right now. Please try again with another image.');
-  }
-});
 
 // ==========================================
 // 🍿 HELPER FUNCTION TO RENDER PAGINATED RESULTS
