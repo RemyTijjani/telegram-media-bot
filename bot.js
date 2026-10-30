@@ -1,6 +1,9 @@
 const axios = require('axios');
 const { Telegraf, Markup } = require('telegraf');
 const dotenv = require('dotenv');
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 const { downloadMedia } = require('./services/socialDownloader');
 const { searchMovies, getMovieDetails, searchPerson, getPersonCredits } = require('./services/tmdb');
 const { identifyActor } = require('./services/actorMatcher');
@@ -395,6 +398,92 @@ bot.command('latest', async (ctx) => {
     ctx.reply('⚠️ Failed to load latest releases.');
   }
 });
+// ==========================================
+// 📸 AI VISUAL MOVIE & ACTOR SEARCH HANDLER
+// ==========================================
+bot.on('photo', async (ctx) => {
+  try {
+    await ctx.replyWithChatAction('typing');
+    await ctx.reply('🔍 *Analyzing your image with AI...*', { parse_mode: 'Markdown' });
 
-module.exports = bot;
+    const photoArray = ctx.message.photo;
+    const fileId = photoArray[photoArray.length - 1].file_id;
+    
+    const file = await ctx.telegram.getFile(fileId);
+    const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+    const imageBuffer = Buffer.from(imageResponse.data);
+
+    const prompt = 'Identify the main actor, movie, or TV series shown in this screenshot. Return ONLY a JSON object formatted as: {"query": "Name of Movie or Actor"}. If unidentifiable, return {"query": null}. Do not include markdown blocks or extra text.';
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        prompt,
+        {
+          inlineData: {
+            data: imageBuffer.toString('base64'),
+            mimeType: 'image/jpeg'
+          }
+        }
+      ]
+    });
+
+    const aiOutput = response.text.trim().replace(/```json|```/g, '');
+    let result = { query: null };
+
+    try {
+      result = JSON.parse(aiOutput);
+    } catch (e) {
+      result.query = response.text.trim();
+    }
+
+    const searchQuery = result.query;
+
+    if (!searchQuery) {
+      return ctx.reply('⚠️ Sorry, I could not identify any movie scene or actor in this photo.');
+    }
+
+    await ctx.reply(`✨ Identified: *${searchQuery}*! Searching TMDB...`, { parse_mode: 'Markdown' });
+
+    const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
+    const tmdbRes = await axios.get(tmdbUrl);
+    const results = (tmdbRes.data.results || []).slice(0, 3);
+
+    if (results.length === 0) {
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find download links.`);
+    }
+
+    for (const item of results) {
+      const title = item.title || item.name || 'Unknown Title';
+      const releaseDate = item.release_date || item.first_air_date || '';
+      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+      const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
+      const overview = item.overview ? item.overview.slice(0, 180) + '...' : 'No description available.';
+
+      const queryEncoded = encodeURIComponent(title);
+      const actionButtons = Markup.inlineKeyboard([
+        [Markup.button.webApp('📥 Download Server (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
+      ]);
+
+      const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
+
+      if (item.poster_path) {
+        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
+          caption,
+          parse_mode: 'Markdown',
+          ...actionButtons
+        });
+      } else {
+        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+      }
+    }
+
+  } catch (error) {
+    console.error('AI Image search error:', error);
+    ctx.reply('⚠️ Failed to process the image. Please try again.');
+  }
+});
 module.exports = bot;
