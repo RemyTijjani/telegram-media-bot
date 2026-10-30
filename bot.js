@@ -104,8 +104,9 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     else {
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.url('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
@@ -137,19 +138,12 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 
       const queryEncoded = encodeURIComponent(title);
 
-      let buttonRows = [];
-      if (mediaType === 'tv') {
-        buttonRows = [
-          [Markup.button.url('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.url('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
-        ];
-      } else {
-        buttonRows = [
-          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-          [Markup.button.url('📥 Download Server 2', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${details.id}`)]
-        ];
-      }
+      const buttonRows = [
+        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
+        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
+      ];
 
       const actionButtons = Markup.inlineKeyboard(buttonRows);
       const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
@@ -244,16 +238,13 @@ bot.command('latest', async (ctx) => {
       const overview = item.overview ? item.overview.slice(0, 250) + '...' : 'No description available.';
 
       const queryEncoded = encodeURIComponent(title);
-      let buttonRows = [];
 
-      if (mediaType === 'tv') {
-        buttonRows.push([Markup.button.url('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
-        buttonRows.push([Markup.button.url('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${item.id}`)]);
-      } else {
-        buttonRows.push([Markup.button.url('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
-        buttonRows.push([Markup.button.url('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
-        buttonRows.push([Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${item.id}`)]);
-      }
+      const buttonRows = [
+        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
+        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
+      ];
 
       const actionButtons = Markup.inlineKeyboard(buttonRows);
       const caption = `🎬 *${title}* (${releaseDate.split('-')[0] || '2026'})\n🏷️ Type: *${mediaType.toUpperCase()}*\n${rating}\n\n📝 *Overview:*\n${overview}`;
@@ -335,8 +326,9 @@ bot.on('photo', async (ctx) => {
     const queryEncoded = encodeURIComponent(title);
 
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 2 (Waploaded)', `https://www.waploaded.com/search?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
 
@@ -358,4 +350,5 @@ bot.on('photo', async (ctx) => {
     ctx.reply('⚠️ Failed to process the image quickly. Please try sending it again.');
   }
 });
+
 module.exports = bot;
