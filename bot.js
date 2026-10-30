@@ -275,66 +275,64 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ LIGHTNING-FAST AI VISUAL MOVIE SEARCH
+// ⚡ ULTRA-FAST AI VISUAL SEARCH (UNDER 4s)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
-    // Grab the smallest compressed thumbnail from Telegram for instant downloading
+    await ctx.replyWithChatAction('typing');
+
+    // 1. Get smallest photo thumbnail (index 0) for instant download
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // Fast buffer download with a strict 3-second timeout
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 3000 });
-    const imageBuffer = Buffer.from(imageResponse.data);
+    // 2. Fetch image buffer with strict 2s timeout
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 2000 });
+    const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
-
-    // Fast AI analysis using Gemini 3.8 Flash
-    const response = await ai.models.generateContent({
+    // 3. Fast Gemini 3.8 Flash call
+    const aiPromise = ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
         {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageBuffer.toString('base64')
-          }
+          inlineData: { mimeType: 'image/jpeg', data: imageBase64 }
         },
-        prompt
+        'Identify movie/TV show. Return ONLY JSON: {"query": "Movie Name"}. If unknown: {"query": null}'
       ]
     });
 
-    const aiOutput = response.text.trim().replace(/```json|```/g, '');
+    const aiResponse = await aiPromise;
+    const aiOutput = aiResponse.text.trim().replace(/```json|```/g, '');
     let result = { query: null };
 
     try {
       result = JSON.parse(aiOutput);
     } catch (e) {
-      result.query = response.text.trim();
+      result.query = aiOutput;
     }
 
     const searchQuery = result.query;
 
     if (!searchQuery || searchQuery.toLowerCase() === 'null') {
-      return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
+      return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
     }
 
-    // Direct TMDB search query lookup
+    // 4. Fast TMDB lookup with tight 2s timeout
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
-    const tmdbRes = await axios.get(tmdbUrl, { timeout: 3000 });
+    const tmdbRes = await axios.get(tmdbUrl, { timeout: 2000 });
     const item = (tmdbRes.data.results || [])[0];
 
     if (!item) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no records were found.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no matching record found on TMDB.`);
     }
 
     const title = item.title || item.name || 'Unknown Title';
     const releaseDate = item.release_date || item.first_air_date || '';
     const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
     const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-    const overview = item.overview ? item.overview.slice(0, 130) + '...' : 'No description available.';
+    const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
 
@@ -359,8 +357,8 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('Visual search error:', error);
-    ctx.reply('⚠️ Failed to process the image quickly. Please try sending it again.');
+    console.error('Visual search speed error:', error.message);
+    ctx.reply('⚠️ Request timed out. Please try sending the image again.');
   }
 });
 
