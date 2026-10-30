@@ -104,8 +104,8 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     else {
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${encodedQuery}`)],
         [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
@@ -138,9 +138,10 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 
       const queryEncoded = encodeURIComponent(title);
 
+      // Direct Server File Host Links + Streaming
       const buttonRows = [
-        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-        [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
         [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
         [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
       ];
@@ -220,7 +221,6 @@ bot.command('latest', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
-    // Use TMDB trending movie endpoint with 4s timeout
     const tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=${process.env.TMDB_API_KEY}`;
     const { data } = await axios.get(tmdbUrl, { timeout: 4000 });
     
@@ -247,8 +247,8 @@ bot.command('latest', async (ctx) => {
         const queryEncoded = encodeURIComponent(title);
 
         const actionButtons = Markup.inlineKeyboard([
-          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
           [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
           [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType}/${item.id}`)]
         ]);
@@ -275,24 +275,21 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ ULTRA-FAST AI VISUAL SEARCH (UNDER 4s)
+// ⚡ LIGHTNING-FAST AI VISUAL MOVIE SEARCH
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
     await ctx.replyWithChatAction('typing');
 
-    // 1. Get smallest photo thumbnail (index 0) for instant download
     const photoArray = ctx.message.photo;
     const targetPhoto = photoArray[0]; 
     const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // 2. Fetch image buffer with strict 2s timeout
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 2000 });
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    // 3. Fast Gemini 3.8 Flash call
     const aiPromise = ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -319,7 +316,6 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Could not identify any movie or series in this photo.');
     }
 
-    // 4. Fast TMDB lookup with tight 2s timeout
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl, { timeout: 2000 });
     const item = (tmdbRes.data.results || [])[0];
@@ -336,9 +332,10 @@ bot.on('photo', async (ctx) => {
 
     const queryEncoded = encodeURIComponent(title);
 
+    // Direct File Host Target Links
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
       [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
