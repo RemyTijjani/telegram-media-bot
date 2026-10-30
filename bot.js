@@ -103,9 +103,9 @@ bot.start((ctx) => ctx.reply(startMessage));
 bot.command('help', (ctx) => ctx.reply(startMessage));
 
 // ==========================================
-// 🔍 CLEAN DIRECT FILE LINK HELPER (SAFE)
+// 🔍 CHECK IF SERVER 1 HAS THE MOVIE
 // ==========================================
-async function fetchDirectDownloadLink(movieTitle) {
+async function checkServer1Availability(movieTitle) {
   try {
     const searchApiUrl = `https://9jarocks.net/wp-json/wp/v2/posts?search=${encodeURIComponent(movieTitle)}`;
     
@@ -116,23 +116,10 @@ async function fetchDirectDownloadLink(movieTitle) {
       }
     });
 
-    if (!posts || posts.length === 0) return null;
-
-    const postHtml = posts[0].content.rendered;
-    const $ = cheerio.load(postHtml);
-    let directLink = null;
-
-    $('a').each((i, el) => {
-      const href = $(el).attr('href');
-      if (href && href.includes('loadedfiles.net/')) {
-        directLink = href;
-        return false;
-      }
-    });
-
-    return directLink;
+    // Returns true if Server 1 returned matching posts
+    return posts && posts.length > 0;
   } catch (error) {
-    return null;
+    return false;
   }
 }
 
@@ -190,15 +177,24 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
         const overview = details.overview ? details.overview.slice(0, 250) + '...' : 'No description available.';
 
         const queryEncoded = encodeURIComponent(title);
-        const directServer1 = await fetchDirectDownloadLink(title);
-        const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
+        const hasServer1 = await checkServer1Availability(title);
 
-        const buttonRows = [
-          [Markup.button.url('📥 Download Server 1', server1Url)],
-          [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
-          [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
-          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
-        ];
+        // ==========================================
+        // 🎛️ CONDITIONAL SERVER BUTTON LOGIC
+        // ==========================================
+        const buttonRows = [];
+
+        if (hasServer1) {
+          // If Server 1 has the movie, ONLY show Server 1
+          buttonRows.push([Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
+        } else {
+          // Otherwise show Server 2 and Server 3 options
+          buttonRows.push([Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)]);
+          buttonRows.push([Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)]);
+        }
+
+        // Always include online streaming option
+        buttonRows.push([Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]);
 
         const actionButtons = Markup.inlineKeyboard(buttonRows);
         const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
