@@ -15,7 +15,7 @@ const { getMovieDetails } = require('./services/tmdb');
 async function warmUpGemini() {
   try {
     ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.8-flash',
       contents: 'warmup'
     }).catch((err) => console.log("Warmup notice:", err.message));
     console.log("🔥 Gemini API connection warmed up successfully!");
@@ -239,17 +239,16 @@ bot.command('quote', async (ctx) => {
 
   const processingMsg = await ctx.reply('⏳ Analyzing quote (this may take a moment)...');
 
-  // Background execution with 2-minute safety timeout
   (async () => {
     try {
       const geminiCall = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: `Identify the exact movie or TV show title and release year for this quote/subtitle: "${quoteText}". 
 Reply ONLY with the title and year (e.g., "Merlin (2008)"). If unsure, reply "UNKNOWN".`
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000) // 2 Minutes
+        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000)
       );
 
       const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
@@ -356,7 +355,6 @@ bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   const processingMsg = await ctx.reply('⏳ Analyzing screenshot (this may take a moment)...');
 
-  // Background execution with 2-minute safety timeout
   (async () => {
     try {
       const photoArray = ctx.message.photo;
@@ -368,7 +366,7 @@ bot.on('photo', async (ctx) => {
       const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
       const geminiCall = ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-3.8-flash',
         contents: [
           { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
           'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
@@ -376,7 +374,7 @@ bot.on('photo', async (ctx) => {
       });
 
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000) // 2 Minutes
+        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 120000)
       );
 
       const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
