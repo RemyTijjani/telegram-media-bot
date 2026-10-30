@@ -3,8 +3,7 @@ dotenv.config();
 
 const axios = require('axios');
 const { Telegraf, Markup } = require('telegraf');
-const { GoogleGenAI } = require('@google/genai');
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
 
 const { downloadMedia } = require('./services/socialDownloader');
 const { searchMovies, getMovieDetails, searchPerson, getPersonCredits } = require('./services/tmdb');
@@ -365,7 +364,8 @@ bot.command('latest', async (ctx) => {
   }
 });
 // ==========================================
-// 📸 AI VISUAL MOVIE & ACTOR SEARCH HANDLER
+// ==========================================
+// 📸 AI VISUAL MOVIE & ACTOR SEARCH HANDLER (DIRECT API)
 // ==========================================
 bot.on('photo', async (ctx) => {
   try {
@@ -379,37 +379,41 @@ bot.on('photo', async (ctx) => {
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
-    const imageBuffer = Buffer.from(imageResponse.data);
+    const base64Image = Buffer.from(imageResponse.data).toString('base64');
 
-    const prompt = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
+    const promptText = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+    // Direct REST call to Gemini API (works with any valid Google API key)
+    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+    
+    const geminiRes = await axios.post(geminiEndpoint, {
       contents: [
-        prompt,
         {
-          inlineData: {
-            data: imageBuffer.toString('base64'),
-            mimeType: 'image/jpeg'
-          }
+          parts: [
+            { text: promptText },
+            {
+              inline_data: {
+                mime_type: 'image/jpeg',
+                data: base64Image
+              }
+            }
+          ]
         }
       ]
     });
 
-    console.log('Gemini Raw Response:', response.text);
-
-    const aiOutput = response.text.trim().replace(/```json|```/g, '');
+    const aiOutputText = geminiRes.data.candidates[0].content.parts[0].text.trim().replace(/```json|```/g, '');
     let result = { query: null };
 
     try {
-      result = JSON.parse(aiOutput);
+      result = JSON.parse(aiOutputText);
     } catch (e) {
-      result.query = response.text.trim();
+      result.query = aiOutputText;
     }
 
     const searchQuery = result.query;
 
-    if (!searchQuery) {
+    if (!searchQuery || searchQuery.toLowerCase() === 'null') {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
@@ -420,7 +424,7 @@ bot.on('photo', async (ctx) => {
     const results = (tmdbRes.data.results || []).slice(0, 3);
 
     if (results.length === 0) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find download records.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find records.`);
     }
 
     for (const item of results) {
@@ -450,7 +454,7 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('DETAILED AI Image search error:', error.response?.data || error.message || error);
+    console.error('API Visual search error:', error.response?.data || error.message);
     ctx.reply('⚠️ Failed to process the image. Please try again.');
   }
 });
