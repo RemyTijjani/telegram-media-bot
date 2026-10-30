@@ -379,7 +379,7 @@ bot.on('photo', async (ctx) => {
     const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    const prompt = 'Identify the main actor, movie, or TV series shown in this screenshot. Return ONLY a JSON object formatted as: {"query": "Name of Movie or Actor"}. If unidentifiable, return {"query": null}. Do not include markdown blocks or extra text.';
+    const prompt = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -394,6 +394,8 @@ bot.on('photo', async (ctx) => {
       ]
     });
 
+    console.log('Gemini Raw Response:', response.text);
+
     const aiOutput = response.text.trim().replace(/```json|```/g, '');
     let result = { query: null };
 
@@ -406,7 +408,7 @@ bot.on('photo', async (ctx) => {
     const searchQuery = result.query;
 
     if (!searchQuery) {
-      return ctx.reply('⚠️ Sorry, I could not identify any movie scene or actor in this photo.');
+      return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
     await ctx.reply(`✨ Identified: *${searchQuery}*! Searching TMDB...`, { parse_mode: 'Markdown' });
@@ -416,7 +418,7 @@ bot.on('photo', async (ctx) => {
     const results = (tmdbRes.data.results || []).slice(0, 3);
 
     if (results.length === 0) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find download links.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find download records.`);
     }
 
     for (const item of results) {
@@ -428,8 +430,8 @@ bot.on('photo', async (ctx) => {
 
       const queryEncoded = encodeURIComponent(title);
       const actionButtons = Markup.inlineKeyboard([
-        [Markup.button.webApp('📥 Download Server (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-        [Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
+        [Markup.button.url('📥 Download Server (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
       ]);
 
       const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
@@ -446,7 +448,7 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('AI Image search error:', error);
+    console.error('DETAILED AI Image search error:', error.response?.data || error.message || error);
     ctx.reply('⚠️ Failed to process the image. Please try again.');
   }
 });
