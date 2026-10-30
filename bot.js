@@ -223,31 +223,17 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES
-// ==========================================
-bot.on('text', async (ctx) => {
-  if (ctx.message.text.startsWith('/')) return;
-
-  const searchQuery = ctx.message.text.trim();
-
-  try {
-    await ctx.replyWithChatAction('typing');
-    await renderPageResults(ctx, searchQuery, 1, false);
-  } catch (error) {
-    console.error('Search Error:', error);
-    ctx.reply('⚠️ Something went wrong while searching. Please try again.');
-  }
-});
-
-// ==========================================
-// 💬 LIGHTNING-FAST QUOTE & SUBTITLE SEARCH
+// 💬 LIGHTNING-FAST QUOTE & SUBTITLE SEARCH (PLACED BEFORE TEXT HANDLER)
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
-  const quoteText = ctx.message.text.replace('/quote', '').trim();
+  const textPayload = ctx.message.text || '';
+  const quoteText = textPayload.replace(/^\/quote\s*/i, '').trim();
+
+  console.log(`[Quote Command Received]: "${quoteText}"`);
 
   if (!quoteText) {
-    return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote I am iron man`', { parse_mode: 'Markdown' });
+    return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote Just keep swimming`', { parse_mode: 'Markdown' });
   }
 
   try {
@@ -255,7 +241,14 @@ bot.command('quote', async (ctx) => {
 
     const geminiCall = ai.models.generateContent({
       model: 'gemini-3.8-flash',
-      contents: `Identify the movie or TV show for this quote or subtitle line: "${quoteText}". Return ONLY the title and year (e.g., "Avengers: Endgame (2019)"). If unknown, reply "UNKNOWN".`
+      contents: `You are an expert movie subtitle and dialogue identifier. 
+Analyze this quote or subtitle line: "${quoteText}".
+Identify the exact movie or TV show title and release year.
+
+RULES:
+- Reply ONLY with the exact title and year, e.g. "Finding Nemo (2003)"
+- If you are NOT completely certain of the exact movie, reply ONLY with "UNKNOWN".
+- Do NOT guess or return random titles.`
     });
 
     const timeoutPromise = new Promise((_, reject) =>
@@ -264,6 +257,8 @@ bot.command('quote', async (ctx) => {
 
     const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
+
+    console.log(`[Quote AI Result]: ${identifiedTitle}`);
 
     if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
       return ctx.reply('⚠️ Could not identify any movie from that subtitle line. Try adding more words!');
@@ -278,7 +273,7 @@ bot.command('quote', async (ctx) => {
     ]);
 
     await ctx.reply(
-      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view search results.`,
+      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_\n\nClick below to download or view full details:`,
       {
         parse_mode: 'Markdown',
         ...actionButtons
@@ -287,10 +282,27 @@ bot.command('quote', async (ctx) => {
 
   } catch (error) {
     if (error.message === 'GEMINI_TIMEOUT') {
-      return ctx.reply('⚠️ Quote search took too long. Please try again!');
+      return ctx.reply('⚠️ Quote search timed out. Please try again!');
     }
     console.error('Quote search error:', error);
-    ctx.reply('⚠️ Quote processing failed. Please try again.');
+    ctx.reply('⚠️ Request failed. Please try a different quote.');
+  }
+});
+
+// ==========================================
+// 🔍 HANDLE USER TEXT SEARCHES
+// ==========================================
+bot.on('text', async (ctx) => {
+  if (ctx.message.text.startsWith('/')) return;
+
+  const searchQuery = ctx.message.text.trim();
+
+  try {
+    await ctx.replyWithChatAction('typing');
+    await renderPageResults(ctx, searchQuery, 1, false);
+  } catch (error) {
+    console.error('Search Error:', error);
+    ctx.reply('⚠️ Something went wrong while searching. Please try again.');
   }
 });
 
