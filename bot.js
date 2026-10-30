@@ -14,10 +14,10 @@ const { getMovieDetails } = require('./services/tmdb');
 // ==========================================
 async function warmUpGemini() {
   try {
-    await ai.models.generateContent({
+    ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: 'warmup'
-    });
+    }).catch((err) => console.log("Warmup notice:", err.message));
     console.log("🔥 Gemini API connection warmed up successfully!");
   } catch (err) {
     console.log("Warmup notice:", err.message);
@@ -116,7 +116,6 @@ async function checkServer1Availability(movieTitle) {
       }
     });
 
-    // Returns true if Server 1 returned matching posts
     return posts && posts.length > 0;
   } catch (error) {
     return false;
@@ -179,21 +178,15 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
         const queryEncoded = encodeURIComponent(title);
         const hasServer1 = await checkServer1Availability(title);
 
-        // ==========================================
-        // 🎛️ CONDITIONAL SERVER BUTTON LOGIC
-        // ==========================================
         const buttonRows = [];
 
         if (hasServer1) {
-          // If Server 1 has the movie, ONLY show Server 1
           buttonRows.push([Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
         } else {
-          // Otherwise show Server 2 and Server 3 options
           buttonRows.push([Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)]);
           buttonRows.push([Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)]);
         }
 
-        // Always include online streaming option
         buttonRows.push([Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]);
 
         const actionButtons = Markup.inlineKeyboard(buttonRows);
@@ -233,7 +226,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 💬 HIGH-SPEED QUOTE SEARCH (GEMINI 2.5 FLASH)
+// 💬 NON-BLOCKING SUBTITLE & QUOTE SEARCH
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
@@ -244,64 +237,68 @@ bot.command('quote', async (ctx) => {
     return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote In a land of myth`', { parse_mode: 'Markdown' });
   }
 
+  // Send an instant message placeholder
   const processingMsg = await ctx.reply('⏳ Analyzing quote...');
 
-  try {
-    const aiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: `Identify the exact movie or TV show title and release year for this quote/subtitle: "${quoteText}". 
+  // Execute in background without blocking the bot's event loop
+  (async () => {
+    try {
+      const aiResponse = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: `Identify the exact movie or TV show title and release year for this quote/subtitle: "${quoteText}". 
 Reply ONLY with the title and year (e.g., "Merlin (2008)"). If unsure, reply "UNKNOWN".`
-    });
+      });
 
-    const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
+      const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
-    if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.telegram.editMessageText(
+      if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
+        return ctx.telegram.editMessageText(
+          ctx.chat.id,
+          processingMsg.message_id,
+          null,
+          '⚠️ Could not identify any movie from that subtitle line. Try adding more words!'
+        );
+      }
+
+      const queryEncoded = encodeURIComponent(identifiedTitle);
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      const actionButtons = Markup.inlineKeyboard([
+        [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
+      ]);
+
+      await ctx.telegram.editMessageText(
         ctx.chat.id,
         processingMsg.message_id,
         null,
-        '⚠️ Could not identify any movie from that subtitle line. Try adding more words!'
+        `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
+        {
+          parse_mode: 'Markdown',
+          ...actionButtons
+        }
       );
+    } catch (error) {
+      console.error('Quote search execution error:', error);
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        processingMsg.message_id,
+        null,
+        '⚠️ Request failed or timed out. Please try again.'
+      ).catch(() => {});
     }
-
-    const queryEncoded = encodeURIComponent(identifiedTitle);
-    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
-    ]);
-
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      processingMsg.message_id,
-      null,
-      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
-      {
-        parse_mode: 'Markdown',
-        ...actionButtons
-      }
-    );
-
-  } catch (error) {
-    console.error('Quote search execution error:', error);
-    await ctx.telegram.editMessageText(
-      ctx.chat.id,
-      processingMsg.message_id,
-      null,
-      '⚠️ Request failed or timed out. Please try again.'
-    );
-  }
+  })();
 });
 
 // ==========================================
-// 🔍 HANDLE USER TEXT SEARCHES
+// 🔍 IMMEDIATE TEXT SEARCH HANDLER
 // ==========================================
 bot.on('text', async (ctx) => {
   if (ctx.message.text.startsWith('/')) return;
 
   const searchQuery = ctx.message.text.trim();
 
+  // Executed instantly even if an image or quote is currently being processed
   try {
     await ctx.replyWithChatAction('typing');
     await renderPageResults(ctx, searchQuery, 1, false);
@@ -346,61 +343,80 @@ bot.action(/^fastsearch_(.+)$/, async (ctx) => {
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// ⚡ PHOTO HANDLER (WITH 5s SAFETY TIMEOUT)
+// ⚡ NON-BLOCKING IMAGE RECOGNITION HANDLER
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
-  try {
-    await ctx.replyWithChatAction('typing');
+  const processingMsg = await ctx.reply('⏳ Analyzing screenshot...');
 
-    const photoArray = ctx.message.photo;
-    const targetPhoto = photoArray[0]; 
-    const file = await ctx.telegram.getFile(targetPhoto.file_id);
-    const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+  // Asynchronous background execution allows incoming text searches to run immediately
+  (async () => {
+    try {
+      const photoArray = ctx.message.photo;
+      const targetPhoto = photoArray[photoArray.length - 1]; 
+      const file = await ctx.telegram.getFile(targetPhoto.file_id);
+      const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 1500 });
-    const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
+      const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 3000 });
+      const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
-    const geminiCall = ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
-        'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
-      ]
-    });
+      const geminiCall = ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
+          'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
+        ]
+      });
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 5000)
-    );
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('GEMINI_TIMEOUT')), 8000)
+      );
 
-    const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
-    const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
+      const aiResponse = await Promise.race([geminiCall, timeoutPromise]);
+      const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
 
-    if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
-      return ctx.reply('⚠️ Could not identify this movie. Try sending a clearer screenshot or use text search.');
+      if (!identifiedTitle || identifiedTitle.toUpperCase().includes('UNKNOWN')) {
+        return ctx.telegram.editMessageText(
+          ctx.chat.id,
+          processingMsg.message_id,
+          null,
+          '⚠️ Could not identify this movie. Try sending a clearer screenshot or use text search.'
+        );
+      }
+
+      const queryEncoded = encodeURIComponent(identifiedTitle);
+      const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      const actionButtons = Markup.inlineKeyboard([
+        [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
+      ]);
+
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        processingMsg.message_id,
+        null,
+        `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
+        {
+          parse_mode: 'Markdown',
+          ...actionButtons
+        }
+      );
+
+    } catch (error) {
+      console.error('Visual search error:', error.message || error);
+      let errorText = '⚠️ Request failed or timed out. Please try text search instead.';
+      if (error.message === 'GEMINI_TIMEOUT') {
+        errorText = '⚠️ AI vision took too long. Please type the title directly or use `/quote`!';
+      }
+      await ctx.telegram.editMessageText(
+        ctx.chat.id,
+        processingMsg.message_id,
+        null,
+        errorText
+      ).catch(() => {});
     }
-
-    const queryEncoded = encodeURIComponent(identifiedTitle);
-    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
-
-    const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Proceed to Download', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.callback(`🔍 View Full Results`, `fastsearch_${queryEncoded}`)]
-    ]);
-
-    await ctx.reply(
-      `🎬 *Movie Identified:* ${identifiedTitle}\n⚡ _Processed in ${elapsedTime}s_`,
-      { parse_mode: 'Markdown', ...actionButtons }
-    );
-
-  } catch (error) {
-    if (error.message === 'GEMINI_TIMEOUT') {
-      return ctx.reply('⚠️ AI vision took too long. Please type the movie title directly or use `/quote` for instant text search!');
-    }
-
-    console.error('Visual search speed error:', error.message || error);
-    ctx.reply('⚠️ Request failed or timed out. Please try text search instead.');
-  }
+  })();
 });
 
 module.exports = bot;
