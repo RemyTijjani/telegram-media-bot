@@ -358,17 +358,24 @@ bot.on('photo', async (ctx) => {
   (async () => {
     try {
       const photoArray = ctx.message.photo;
-      const targetPhoto = photoArray[photoArray.length - 1]; 
-      const file = await ctx.telegram.getFile(targetPhoto.file_id);
-      const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
+      const targetPhoto = photoArray[photoArray.length - 1]; // highest resolution photo
+      const fileLink = await ctx.telegram.getFileLink(targetPhoto.file_id);
 
-      const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
+      const imageResponse = await axios.get(fileLink.href || fileLink, { 
+        responseType: 'arraybuffer', 
+        timeout: 10000 
+      });
       const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
       const geminiCall = ai.models.generateContent({
         model: 'gemini-3.8-flash',
         contents: [
-          { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
+          {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: imageBase64
+            }
+          },
           'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
         ]
       });
