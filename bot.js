@@ -2,6 +2,7 @@ const dotenv = require('dotenv');
 dotenv.config();
 
 const axios = require('axios');
+const cheerio = require('cheerio');
 const { Telegraf, Markup } = require('telegraf');
 const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -85,6 +86,37 @@ bot.start((ctx) => ctx.reply(startMessage));
 bot.command('help', (ctx) => ctx.reply(startMessage));
 
 // ==========================================
+// 🔍 AUTOMATED DIRECT FILE LINK SCRAPER
+// ==========================================
+async function fetchDirectDownloadLink(movieTitle) {
+  try {
+    const searchApiUrl = `https://9jarocks.net/wp-json/wp/v2/posts?search=${encodeURIComponent(movieTitle)}`;
+    const { data: posts } = await axios.get(searchApiUrl, { timeout: 2000 });
+
+    if (!posts || posts.length === 0) {
+      return null;
+    }
+
+    const postHtml = posts[0].content.rendered;
+    const $ = cheerio.load(postHtml);
+    let directLink = null;
+
+    $('a').each((i, el) => {
+      const href = $(el).attr('href');
+      if (href && href.includes('loadedfiles.net/')) {
+        directLink = href;
+        return false; // Break loop once found
+      }
+    });
+
+    return directLink;
+  } catch (error) {
+    console.error('Auto-extraction error:', error.message);
+    return null;
+  }
+}
+
+// ==========================================
 // 🍿 HELPER FUNCTION TO RENDER PAGINATED RESULTS
 // ==========================================
 async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = false) {
@@ -137,10 +169,11 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
       const overview = details.overview ? details.overview.slice(0, 250) + '...' : 'No description available.';
 
       const queryEncoded = encodeURIComponent(title);
+      const directServer1 = await fetchDirectDownloadLink(title);
+      const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
 
-      // Functional Search Post Links for Servers 1 & 2
       const buttonRows = [
-        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+        [Markup.button.url('📥 Download Server 1', server1Url)],
         [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
         [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
         [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${details.id}`)]
@@ -245,9 +278,11 @@ bot.command('latest', async (ctx) => {
         const overview = item.overview ? item.overview.slice(0, 200) + '...' : 'No description available.';
 
         const queryEncoded = encodeURIComponent(title);
+        const directServer1 = await fetchDirectDownloadLink(title);
+        const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
 
         const actionButtons = Markup.inlineKeyboard([
-          [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 1', server1Url)],
           [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
           [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
           [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType}/${item.id}`)]
@@ -327,14 +362,15 @@ bot.on('photo', async (ctx) => {
     const title = item.title || item.name || 'Unknown Title';
     const releaseDate = item.release_date || item.first_air_date || '';
     const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/App';
+    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
     const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
+    const directServer1 = await fetchDirectDownloadLink(title);
+    const server1Url = directServer1 || `https://9jarocks.net/latest?s=${queryEncoded}`;
 
-    // Functional Post Link Targets for Servers 1 & 2
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 1', server1Url)],
       [Markup.button.url('📥 Download Server 2', `https://www.waploaded.com/search?q=${queryEncoded}`)],
       [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
