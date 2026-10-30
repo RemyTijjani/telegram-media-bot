@@ -271,25 +271,28 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// 📸 AI VISUAL MOVIE SEARCH HANDLER (FIXED MODEL)
+// ⚡ BLAZING FAST 🚀 AI VISUAL MOVIE SEARCH
 // ==========================================
 bot.on('photo', async (ctx) => {
+  const startTime = Date.now();
   try {
     await ctx.replyWithChatAction('typing');
-    await ctx.reply('🔍 *Analyzing your image with AI...*', { parse_mode: 'Markdown' });
 
     const photoArray = ctx.message.photo;
-    const fileId = photoArray[photoArray.length - 1].file_id;
+    // Pick a medium-sized file index (e.g., second to last, or index 1) for rapid downloading
+    const targetPhoto = photoArray.length > 1 ? photoArray[photoArray.length - 2] : photoArray[0];
+    const fileId = targetPhoto.file_id;
     
     const file = await ctx.telegram.getFile(fileId);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
+    // Fetch image buffer and query TMDB in parallel or sequence with minimal overhead
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    const prompt = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
+    const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
-    // Using stable gemini-2.0-flash model
+    // Call Gemini 3.8 Flash
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -318,46 +321,44 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
-    await ctx.reply(`✨ Identified: *${searchQuery}*! Searching TMDB...`, { parse_mode: 'Markdown' });
-
+    // Fetch TMDB data
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl);
-    const results = (tmdbRes.data.results || []).slice(0, 3);
+    const item = (tmdbRes.data.results || [])[0];
 
-    if (results.length === 0) {
+    if (!item) {
       return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find records.`);
     }
 
-    for (const item of results) {
-      const title = item.title || item.name || 'Unknown Title';
-      const releaseDate = item.release_date || item.first_air_date || '';
-      const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
-      const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-      const overview = item.overview ? item.overview.slice(0, 180) + '...' : 'No description available.';
+    const title = item.title || item.name || 'Unknown Title';
+    const releaseDate = item.release_date || item.first_air_date || '';
+    const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+    const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
+    const overview = item.overview ? item.overview.slice(0, 150) + '...' : 'No description available.';
 
-      const queryEncoded = encodeURIComponent(title);
-      const actionButtons = Markup.inlineKeyboard([
-        [Markup.button.url('📥 Download Server (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
-      ]);
+    const queryEncoded = encodeURIComponent(title);
+    const actionButtons = Markup.inlineKeyboard([
+      [Markup.button.url('📥 Download (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
+    ]);
 
-      const caption = `🎬 *${title}*${year}\n${rating}\n\n📝 *Overview:*\n${overview}`;
+    const caption = `🎬 *${title}*${year} | ${rating}\n\n📝 ${overview}`;
 
-      if (item.poster_path) {
-        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
-          caption,
-          parse_mode: 'Markdown',
-          ...actionButtons
-        });
-      } else {
-        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
-      }
+    const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    if (item.poster_path) {
+      await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
+        caption: `${caption}\n\n⚡ _Processed in ${elapsedTime}s_`,
+        parse_mode: 'Markdown',
+        ...actionButtons
+      });
+    } else {
+      await ctx.reply(`${caption}\n\n⚡ _Processed in ${elapsedTime}s_`, { parse_mode: 'Markdown', ...actionButtons });
     }
 
   } catch (error) {
-    console.error('SDK Visual search error:', error);
-    ctx.reply('⚠️ Failed to process the image. Please try again.');
+    console.error('Speed optimization error:', error);
+    ctx.reply('⚠️ Failed to process the image quickly. Please try again.');
   }
 });
-
 module.exports = bot;
