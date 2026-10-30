@@ -214,50 +214,63 @@ bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// 🆕 /LATEST COMMAND
+// 🆕 /LATEST COMMAND (FIXED & HIGH-SPEED)
 // ==========================================
 bot.command('latest', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
 
+    // Use TMDB trending movie endpoint with 4s timeout
     const tmdbUrl = `https://api.themoviedb.org/3/trending/all/day?api_key=${process.env.TMDB_API_KEY}`;
-    const { data } = await axios.get(tmdbUrl);
-    const results = (data.results || []).filter(item => item.media_type === 'movie' || item.media_type === 'tv').slice(0, 5);
+    const { data } = await axios.get(tmdbUrl, { timeout: 4000 });
+    
+    const results = (data.results || [])
+      .filter(item => item.media_type === 'movie' || item.media_type === 'tv' || item.title || item.name)
+      .slice(0, 5);
 
-    if (results.length === 0) {
+    if (!results || results.length === 0) {
       return ctx.reply('⚠️ No new releases found at the moment.');
     }
 
-    await ctx.reply('🔥 *Latest Movies & Series Releases:*', { parse_mode: 'Markdown' });
+    await ctx.reply('🔥 *Latest Trending Movies & Series Releases:*', { parse_mode: 'Markdown' });
 
     for (const item of results) {
-      const mediaType = item.media_type;
-      const title = item.title || item.name || 'Unknown Title';
-      const releaseDate = item.release_date || item.first_air_date || 'Coming Soon';
-      const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-      const overview = item.overview ? item.overview.slice(0, 250) + '...' : 'No description available.';
+      try {
+        const isTv = item.media_type === 'tv' || (!item.title && item.name);
+        const mediaType = isTv ? 'tv' : 'movie';
+        const title = item.title || item.name || 'Unknown Title';
+        const releaseDate = item.release_date || item.first_air_date || '';
+        const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
+        const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
+        const overview = item.overview ? item.overview.slice(0, 200) + '...' : 'No description available.';
 
-      const queryEncoded = encodeURIComponent(title);
+        const queryEncoded = encodeURIComponent(title);
 
-      const buttonRows = [
-        [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${queryEncoded}`)],
-        [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
-        [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
-        [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
-      ];
+        const actionButtons = Markup.inlineKeyboard([
+          [Markup.button.url('📥 Download Server 1', `https://loadedfiles.net/?s=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 2', `https://meetdownload.com/?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Server 3', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${mediaType}/${item.id}`)]
+        ]);
 
-      const actionButtons = Markup.inlineKeyboard(buttonRows);
-      const caption = `🎬 *${title}* (${releaseDate.split('-')[0] || '2026'})\n🏷️ Type: *${mediaType.toUpperCase()}*\n${rating}\n\n📝 *Overview:*\n${overview}`;
+        const caption = `🎬 *${title}*${year} [${mediaType.toUpperCase()}]\n${rating}\n\n📝 *Overview:*\n${overview}`;
 
-      if (item.poster_path) {
-        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown', ...actionButtons });
-      } else {
-        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+        if (item.poster_path) {
+          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, {
+            caption,
+            parse_mode: 'Markdown',
+            ...actionButtons
+          });
+        } else {
+          await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
+        }
+      } catch (itemError) {
+        console.error('Error rendering individual latest item:', itemError);
       }
     }
   } catch (error) {
-    console.error('Error fetching latest updates:', error);
-    ctx.reply('⚠️ Failed to load latest releases.');
+    console.error('Error fetching latest updates:', error?.response?.data || error.message);
+    ctx.reply('⚠️ Failed to load latest releases. Please try again.');
   }
 });
 
