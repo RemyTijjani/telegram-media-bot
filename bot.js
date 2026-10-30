@@ -8,19 +8,15 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const { downloadMedia } = require('./services/socialDownloader');
 const { searchMovies, getMovieDetails, searchPerson, getPersonCredits } = require('./services/tmdb');
-const { identifyActor } = require('./services/actorMatcher');
-
-dotenv.config();
 
 const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // ==========================================
-// 📢 FORCE-JOIN CHANNEL MIDDLEWARE (PASTE HERE)
+// 📢 FORCE-JOIN CHANNEL MIDDLEWARE
 // ==========================================
-const CHANNEL_USERNAME = '@EMPTYMOVIEBOX'; // 👈 Replace with your channel username
+const CHANNEL_USERNAME = '@EMPTYMOVIEBOX';
 
 bot.use(async (ctx, next) => {
-  // Allow /start command or non-private chats without blocking
   if (ctx.chat?.type !== 'private' || !ctx.message?.text || ctx.message.text.startsWith('/start')) {
     return next();
   }
@@ -49,24 +45,21 @@ bot.use(async (ctx, next) => {
   return next();
 });
 
-// ... rest of your code (bot.command, bot.on, etc.)
 // ==========================================
 // 🛠️ AUTOMATIC BOT PROFILE & COMMAND SETUP
 // ==========================================
 async function setupBotProfile() {
   try {
-    // 1. Set Menu Commands (Shown in bottom-left / menu button)
     await bot.telegram.setMyCommands([
       { command: 'start', description: '🚀 Start the bot & view main menu' },
-      { command: 'help', description: '❓ Get help and usage instructions' }
+      { command: 'help', description: '❓ Get help and usage instructions' },
+      { command: 'latest', description: '🔥 View trending movies & series' }
     ]);
 
-    // 2. Set Main Description (Seen on welcome screen before clicking Start)
     await bot.telegram.setMyDescription(
       "🎬 Search, stream online, and download HD movies & TV series directly inside Telegram!\n\nFast streams & high-speed direct downloads."
     );
 
-    // 3. Set Short Description (Seen in bot profile preview)
     await bot.telegram.setMyShortDescription(
       "🍿 Watch and download movies & TV series inside Telegram."
     );
@@ -77,87 +70,42 @@ async function setupBotProfile() {
   }
 }
 
-// Run setup on bot launch
 setupBotProfile();
-const SOCIAL_URL_PATTERN = /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|tiktok\.com|instagram\.com|facebook\.com|fb\.watch|twitter\.com|x\.com)\/[^\s<]+/i;
 
 const startMessage = [
   '🎬 Welcome to ReelGrab.',
   '',
-  'Paste a YouTube, TikTok, Instagram, Facebook, or X link and I will prepare the video.',
   'Type a movie or TV title for a cinematic info card.',
-  'Send an actor photo for recognition and a filmography lookup.',
+  'Send a movie poster or screenshot for AI visual identification and download links!',
   '',
   'Please only download and share content you have permission to use.'
 ].join('\n');
 
-function cleanUrl(value) {
-  return value.replace(/[),.!?]+$/, '');
-}
-
-function movieButtons(movieId, movieTitle) {
-  // Format the movie title safely for the web search URL
-  const query = encodeURIComponent(movieTitle);
-
-  return Markup.inlineKeyboard([
-    [
-      // Button 1: Takes user straight to videodownloader.site with the movie title pre-filled
-      Markup.button.webApp('📥 Download Movie', `https://videodownloader.site/?q=${query}`)
-    ],
-    [
-      // Button 2: Stream button for instant playback
-      Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${movieId}`)
-    ]
-  ]);
-}
-
-function movieCaption(movie) {
-  const year = movie.release_date ? movie.release_date.slice(0, 4) : '—';
-  const rating = typeof movie.vote_average === 'number' ? movie.vote_average.toFixed(1) : '—';
-  const genres = movie.genres?.length ? movie.genres.join(', ') : 'Genre unavailable';
-  const overview = movie.overview || 'No overview is available for this title.';
-  return [
-    `🎬 ${movie.title} (${year})`,
-    `⭐ ${rating} / 10`,
-    `${genres}`,
-    '',
-    overview
-  ].join('\n');
-}
-
 bot.start((ctx) => ctx.reply(startMessage));
-
 bot.command('help', (ctx) => ctx.reply(startMessage));
-
 
 // ==========================================
 // 🍿 HELPER FUNCTION TO RENDER PAGINATED RESULTS
 // ==========================================
 async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = false) {
   const itemsPerPage = 5;
-
-  // TMDB pages return 20 items per request. Calculate which TMDB page to fetch:
   const tmdbPage = Math.ceil((pageNum * itemsPerPage) / 20);
   const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}&page=${tmdbPage}`;
 
   const { data } = await axios.get(tmdbUrl);
   const rawResults = data.results || [];
-
-  // Filter out people (only keep movies & tv)
   const validResults = rawResults.filter(item => item.media_type === 'movie' || item.media_type === 'tv');
 
-  // Total results and total pages calculation based on 5 items per view
   const totalResults = data.total_results || validResults.length;
   const totalPages = Math.ceil(totalResults / itemsPerPage) || 1;
 
   if (validResults.length === 0) {
     if (isCallback) await ctx.answerCbQuery('No more results found.');
     else {
-      // Fallback for custom or non-TMDB titles
       const encodedQuery = encodeURIComponent(searchQuery);
       const fallbackButtons = Markup.inlineKeyboard([
-        [Markup.button.url ('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
-        [Markup.button.url ('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
+        [Markup.button.url('📥 Download Server 1', `https://9jarocks.net/latest?s=${encodedQuery}`)],
+        [Markup.button.url('📥 Download Server 2', `https://videodownloader.site/?q=${encodedQuery}`)]
       ]);
 
       await ctx.reply(
@@ -168,16 +116,13 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     return;
   }
 
-  // Calculate slice range for 5 items per page
   const indexOnTmdbPage = ((pageNum - 1) % 4) * itemsPerPage;
   const pageItems = validResults.slice(indexOnTmdbPage, indexOnTmdbPage + itemsPerPage);
 
-  // Send header message
   await ctx.reply(`🔎 *Found ${totalResults} result(s) for "${searchQuery}" (Page ${pageNum} of ${totalPages}):*`, {
     parse_mode: 'Markdown'
   });
 
-  // Loop through items on the current page
   for (const item of pageItems) {
     try {
       const mediaType = item.media_type;
@@ -195,7 +140,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
       let buttonRows = [];
       if (mediaType === 'tv') {
         buttonRows = [
-          [Markup.button.url ('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+          [Markup.button.url('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
           [Markup.button.url('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${details.id}`)]
         ];
       } else {
@@ -223,15 +168,11 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
     }
   }
 
-  // Generate Navigation Bar (Next / Prev Buttons)
   const navButtons = [];
-
   if (pageNum > 1) {
     navButtons.push(Markup.button.callback('◀️ Previous', `page_${pageNum - 1}_${encodeURIComponent(searchQuery)}`));
   }
-
   navButtons.push(Markup.button.callback(`📄 Page ${pageNum}/${totalPages}`, 'noop'));
-
   if (pageNum < totalPages) {
     navButtons.push(Markup.button.callback('Next ▶️', `page_${pageNum + 1}_${encodeURIComponent(searchQuery)}`));
   }
@@ -260,7 +201,7 @@ bot.on('text', async (ctx) => {
 });
 
 // ==========================================
-// 🔄 HANDLE PAGINATION CLICK (NEXT / PREV)
+// 🔄 HANDLE PAGINATION CLICK
 // ==========================================
 bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
   const targetPage = parseInt(ctx.match[1], 10);
@@ -276,29 +217,11 @@ bot.action(/^page_(\d+)_(.+)$/, async (ctx) => {
   }
 });
 
-// Handle dummy click on page indicator button
-bot.action('noop', (ctx) => ctx.answerCbQuery());
-// Handle dummy click on page indicator button
 bot.action('noop', (ctx) => ctx.answerCbQuery());
 
 // ==========================================
-// 🆕 /LATEST COMMAND & AVAILABILITY CHECK
+// 🆕 /LATEST COMMAND
 // ==========================================
-async function checkAvailability(title) {
-  const query = encodeURIComponent(title);
-  
-  const [has9jaRocks, hasVideoDownloader] = await Promise.all([
-    axios.head(`https://9jarocks.net/latest?s=${query}`).then(res => res.status === 200).catch(() => false),
-    axios.head(`https://videodownloader.site/?q=${query}`).then(res => res.status === 200).catch(() => false)
-  ]);
-
-  return {
-    has9jaRocks,
-    hasVideoDownloader,
-    isAvailable: has9jaRocks || hasVideoDownloader
-  };
-}
-
 bot.command('latest', async (ctx) => {
   try {
     await ctx.replyWithChatAction('typing');
@@ -321,42 +244,24 @@ bot.command('latest', async (ctx) => {
       const overview = item.overview ? item.overview.slice(0, 250) + '...' : 'No description available.';
 
       const queryEncoded = encodeURIComponent(title);
-      const status = await checkAvailability(title);
-
       let buttonRows = [];
 
-      if (status.isAvailable) {
-        if (mediaType === 'tv') {
-          if (status.hasVideoDownloader) {
-            buttonRows.push([Markup.button.webApp('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
-          }
-          buttonRows.push([Markup.button.webApp('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${item.id}`)]);
-        } else {
-          if (status.has9jaRocks) {
-            buttonRows.push([Markup.button.webApp('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
-          }
-          if (status.hasVideoDownloader) {
-            buttonRows.push([Markup.button.webApp('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
-          }
-          buttonRows.push([Markup.button.webApp('▶️ Stream Online', `https://vidsrc.to/embed/movie/${item.id}`)]);
-        }
+      if (mediaType === 'tv') {
+        buttonRows.push([Markup.button.url('📥 Download Series (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
+        buttonRows.push([Markup.button.url('▶️ Stream Series Online', `https://vidsrc.to/embed/tv/${item.id}`)]);
+      } else {
+        buttonRows.push([Markup.button.url('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)]);
+        buttonRows.push([Markup.button.url('📥 Download Server 2 (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)]);
+        buttonRows.push([Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/movie/${item.id}`)]);
       }
 
-      const caption = `🎬 *${title}* (${releaseDate.split('-')[0] || '2026'})\n🏷️ Type: *${mediaType.toUpperCase()}*\n${rating}\n\n📝 *Overview:*\n${overview}${!status.isAvailable ? '\n\n⏳ *Status:* _Not yet available for download/stream._' : ''}`;
+      const actionButtons = Markup.inlineKeyboard(buttonRows);
+      const caption = `🎬 *${title}* (${releaseDate.split('-')[0] || '2026'})\n🏷️ Type: *${mediaType.toUpperCase()}*\n${rating}\n\n📝 *Overview:*\n${overview}`;
 
-      if (buttonRows.length > 0) {
-        const actionButtons = Markup.inlineKeyboard(buttonRows);
-        if (item.poster_path) {
-          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown', ...actionButtons });
-        } else {
-          await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
-        }
+      if (item.poster_path) {
+        await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown', ...actionButtons });
       } else {
-        if (item.poster_path) {
-          await ctx.replyWithPhoto(`https://image.tmdb.org/t/p/w500${item.poster_path}`, { caption, parse_mode: 'Markdown' });
-        } else {
-          await ctx.reply(caption, { parse_mode: 'Markdown' });
-        }
+        await ctx.reply(caption, { parse_mode: 'Markdown', ...actionButtons });
       }
     }
   } catch (error) {
@@ -364,8 +269,9 @@ bot.command('latest', async (ctx) => {
     ctx.reply('⚠️ Failed to load latest releases.');
   }
 });
+
 // ==========================================
-// 📸 AI VISUAL MOVIE SEARCH HANDLER (OFFICIAL SDK)
+// 📸 AI VISUAL MOVIE SEARCH HANDLER (FIXED MODEL)
 // ==========================================
 bot.on('photo', async (ctx) => {
   try {
@@ -383,9 +289,9 @@ bot.on('photo', async (ctx) => {
 
     const prompt = 'Identify the main movie or TV series shown in this image. Return ONLY a JSON object formatted as: {"query": "Name of Movie"}. If unidentifiable, return {"query": null}.';
 
-    // Official SDK call handles AQ. auth tokens automatically
+    // Using stable gemini-2.0-flash model
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: [
         prompt,
         {
@@ -453,4 +359,5 @@ bot.on('photo', async (ctx) => {
     ctx.reply('⚠️ Failed to process the image. Please try again.');
   }
 });
+
 module.exports = bot;
