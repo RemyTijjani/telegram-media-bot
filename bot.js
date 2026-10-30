@@ -271,26 +271,25 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ FAST & WORKING AI VISUAL MOVIE SEARCH
+// ⚡ LIGHTNING FAST 🚀 AI VISUAL MOVIE SEARCH
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
-    await ctx.replyWithChatAction('typing');
-
-    // 1. Get compressed thumbnail for fast processing
+    // 1. Instantly grab the smallest thumbnail payload from Telegram (index 0)
     const photoArray = ctx.message.photo;
-    const targetPhoto = photoArray[0]; // Smallest resolution (fastest payload)
-    const file = await ctx.telegram.getFile(targetPhoto.file_id);
+    const fileId = photoArray[0].file_id;
+    
+    const file = await ctx.telegram.getFile(fileId);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
 
-    // 2. Download image buffer
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
+    // 2. Fetch the tiny image buffer with a tight 3s timeout so it never hangs
+    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 3000 });
     const imageBuffer = Buffer.from(imageResponse.data);
 
-    const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
+    const prompt = 'Identify the movie or TV series. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
-    // 3. Pass Base64 data correctly to Gemini
+    // 3. Fast call to Gemini 3.8 Flash
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
@@ -319,26 +318,26 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
-    // 4. Query TMDB for movie card details
+    // 4. Single TMDB lookup for top match (omits slow looping fetches)
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
-    const tmdbRes = await axios.get(tmdbUrl);
-    const item = (tmdbRes.data.results || [])[0];
+    const tmdbRes = await axios.get(tmdbUrl, { timeout: 3000 });
+    const item = (tmdbRes.data.results || []).find(r => r.media_type === 'movie' || r.media_type === 'tv');
 
     if (!item) {
-      return ctx.reply(`⚠️ Identified *${searchQuery}*, but couldn't find records on TMDB.`);
+      return ctx.reply(`⚠️ Identified *${searchQuery}*, but no records found.`);
     }
 
     const title = item.title || item.name || 'Unknown Title';
     const releaseDate = item.release_date || item.first_air_date || '';
     const year = releaseDate ? ` (${releaseDate.split('-')[0]})` : '';
     const rating = item.vote_average ? `⭐ ${item.vote_average.toFixed(1)}/10` : '⭐ N/A';
-    const overview = item.overview ? item.overview.slice(0, 150) + '...' : 'No description available.';
+    const overview = item.overview ? item.overview.slice(0, 120) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
 
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.url('📥 Download (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 1 (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download Server 2 (Waploaded)', `https://www.waploaded.com/search?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
 
@@ -356,8 +355,8 @@ bot.on('photo', async (ctx) => {
     }
 
   } catch (error) {
-    console.error('Visual search handler error:', error);
-    ctx.reply('⚠️ Failed to process the image. Please try sending it again.');
+    console.error('Visual search speed error:', error);
+    ctx.reply('⚠️ Request took too long or failed. Please try again.');
   }
 });
 module.exports = bot;
