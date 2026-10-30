@@ -271,32 +271,29 @@ bot.command('latest', async (ctx) => {
 });
 
 // ==========================================
-// ⚡ BLAZING FAST 🚀 AI VISUAL MOVIE SEARCH (WITH DUAL DOWNLOADERS)
+// ⚡ ULTRA-FAST AI VISUAL MOVIE SEARCH (DIRECT LINK PASSING)
 // ==========================================
 bot.on('photo', async (ctx) => {
   const startTime = Date.now();
   try {
     await ctx.replyWithChatAction('typing');
 
+    // Pick the smallest image thumbnail for lightning-fast AI analysis
     const photoArray = ctx.message.photo;
-    const targetPhoto = photoArray.length > 1 ? photoArray[photoArray.length - 2] : photoArray[0];
-    const fileId = targetPhoto.file_id;
-    
-    const file = await ctx.telegram.getFile(fileId);
+    const targetPhoto = photoArray[0]; // Index 0 is the smallest compressed resolution
+    const file = await ctx.telegram.getFile(targetPhoto.file_id);
     const photoUrl = `https://api.telegram.org/file/bot${process.env.BOT_TOKEN}/${file.file_path}`;
-
-    const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer', timeout: 5000 });
-    const imageBuffer = Buffer.from(imageResponse.data);
 
     const prompt = 'Identify the movie or TV series in this image. Return ONLY a JSON object: {"query": "Movie Name"}. If unknown: {"query": null}.';
 
+    // Send photoUrl directly to Gemini — avoids downloading the buffer locally!
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash',
       contents: [
         prompt,
         {
-          inlineData: {
-            data: imageBuffer.toString('base64'),
+          fileData: {
+            fileUri: photoUrl,
             mimeType: 'image/jpeg'
           }
         }
@@ -318,6 +315,7 @@ bot.on('photo', async (ctx) => {
       return ctx.reply('⚠️ Sorry, I could not identify any movie or series in this photo.');
     }
 
+    // Direct TMDB multi-search lookup
     const tmdbUrl = `https://api.themoviedb.org/3/search/multi?api_key=${process.env.TMDB_API_KEY}&query=${encodeURIComponent(searchQuery)}`;
     const tmdbRes = await axios.get(tmdbUrl);
     const item = (tmdbRes.data.results || [])[0];
@@ -333,11 +331,10 @@ bot.on('photo', async (ctx) => {
     const overview = item.overview ? item.overview.slice(0, 150) + '...' : 'No description available.';
 
     const queryEncoded = encodeURIComponent(title);
-    
-    // Dual download servers + stream option
+
     const actionButtons = Markup.inlineKeyboard([
-      [Markup.button.url('📥 Download (Server 1)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
-      [Markup.button.url('📥 Download (Server 2)', `https://videodownloader.site/?q=${queryEncoded}`)],
+      [Markup.button.url('📥 Download (9jaRocks)', `https://9jarocks.net/latest?s=${queryEncoded}`)],
+      [Markup.button.url('📥 Download (VideoDownloader)', `https://videodownloader.site/?q=${queryEncoded}`)],
       [Markup.button.url('▶️ Stream Online', `https://vidsrc.to/embed/${item.media_type === 'tv' ? 'tv' : 'movie'}/${item.id}`)]
     ]);
 
