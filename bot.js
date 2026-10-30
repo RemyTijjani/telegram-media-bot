@@ -15,7 +15,7 @@ const { getMovieDetails } = require('./services/tmdb');
 async function warmUpGemini() {
   try {
     await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.5-flash',
       contents: 'warmup'
     });
     console.log("🔥 Gemini API connection warmed up successfully!");
@@ -237,7 +237,7 @@ async function renderPageResults(ctx, searchQuery, pageNum = 1, isCallback = fal
 }
 
 // ==========================================
-// 💬 INSTANT-FEEDBACK QUOTE SEARCH
+// 💬 HIGH-SPEED QUOTE SEARCH (GEMINI 2.5 FLASH)
 // ==========================================
 bot.command('quote', async (ctx) => {
   const startTime = Date.now();
@@ -245,22 +245,16 @@ bot.command('quote', async (ctx) => {
   const quoteText = textPayload.replace(/^\/[a-zA-Z0-9_]+\s*/i, '').trim();
 
   if (!quoteText) {
-    return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote Just keep swimming`', { parse_mode: 'Markdown' });
+    return ctx.reply('⚠️ Please provide a line of subtitle or quote!\n\n*Example:* `/quote In a land of myth`', { parse_mode: 'Markdown' });
   }
 
   const processingMsg = await ctx.reply('⏳ Analyzing quote...');
 
   try {
     const aiResponse = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
-      contents: `You are an expert movie subtitle and dialogue identifier. 
-Analyze this quote or subtitle line: "${quoteText}".
-Identify the exact movie or TV show title and release year.
-
-RULES:
-- Reply ONLY with the exact title and year, e.g. "Finding Nemo (2003)"
-- If you are NOT completely certain of the exact movie, reply ONLY with "UNKNOWN".
-- Do NOT guess or return random titles.`
+      model: 'gemini-2.5-flash',
+      contents: `Identify the exact movie or TV show title and release year for this quote/subtitle: "${quoteText}". 
+Reply ONLY with the title and year (e.g., "Merlin (2008)"). If unsure, reply "UNKNOWN".`
     });
 
     const identifiedTitle = aiResponse.text ? aiResponse.text.trim().replace(/["']/g, '') : 'UNKNOWN';
@@ -372,7 +366,7 @@ bot.on('photo', async (ctx) => {
     const imageBase64 = Buffer.from(imageResponse.data).toString('base64');
 
     const geminiCall = ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.5-flash',
       contents: [
         { inlineData: { mimeType: 'image/jpeg', data: imageBase64 } },
         'Identify the movie or TV show. Return ONLY the title and year (e.g., "Student of the Year 2 (2019)"). If unknown, reply "UNKNOWN".'
